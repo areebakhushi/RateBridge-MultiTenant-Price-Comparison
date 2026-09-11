@@ -319,6 +319,7 @@ class AdminTheme {
 /// Navy AppBar — standard across admin screens. Includes notification icon by default.
 class AdminAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
+  final Widget? titleWidget;
   final List<Widget>? actions;
   final PreferredSizeWidget? bottom;
   final bool automaticallyImplyLeading;
@@ -328,12 +329,13 @@ class AdminAppBar extends StatelessWidget implements PreferredSizeWidget {
   const AdminAppBar({
     super.key,
     this.title,
+    this.titleWidget,
     this.actions,
     this.bottom,
     this.automaticallyImplyLeading = true,
     this.showNotificationIcon = true,
     this.leading,
-  });
+  }) : assert(title != null || titleWidget != null);
 
   @override
   Size get preferredSize =>
@@ -366,7 +368,7 @@ class AdminAppBar extends StatelessWidget implements PreferredSizeWidget {
           (automaticallyImplyLeading
               ? AppNavigation.leading(context)
               : null),
-      title: title != null ? Text(title!) : null,
+      title: titleWidget ?? (title != null ? Text(title!) : null),
       actions: allActions,
       bottom: bottom,
     );

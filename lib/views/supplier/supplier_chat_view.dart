@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../theme/supplier_theme.dart';
 import '../../constants/route_names.dart';
 import '../../models/chat_thread_model.dart';
+import '../../utils/app_navigation.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/chat_viewmodel.dart';
 import '../../widgets/supplier_nav_bar.dart';
@@ -18,6 +19,9 @@ class SupplierChatView extends StatefulWidget {
 }
 
 class _SupplierChatViewState extends State<SupplierChatView> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedChatIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -56,19 +60,101 @@ class _SupplierChatViewState extends State<SupplierChatView> {
   }
 
   void _openThread(ChatThreadModel thread) {
+    if (_isSelectionMode) {
+      _toggleSelection(thread.chatId);
+      return;
+    }
     context.push(
       '${RouteNames.supplierChat}/${thread.chatId}',
       extra: thread,
     );
   }
 
+  void _toggleSelection(String chatId) {
+    setState(() {
+      if (_selectedChatIds.contains(chatId)) {
+        _selectedChatIds.remove(chatId);
+        if (_selectedChatIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedChatIds.add(chatId);
+      }
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected(String userId) async {
+    if (_selectedChatIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedChatIds.length} conversations?'),
+        content: const Text('These conversations will be removed from your list. They will still be visible to the field users.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        final vm = context.read<ChatViewModel>();
+        for (final chatId in _selectedChatIds) {
+          await vm.hideConversation(chatId, userId);
+        }
+        setState(() {
+          _selectedChatIds.clear();
+          _isSelectionMode = false;
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final userId = context.watch<AuthViewModel>().user?.uid ?? '';
+
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.supplierDashboard,
+      child: Scaffold(
       backgroundColor: FieldColors.screenBackground,
-      appBar: const SupplierAppBar(title: 'Messages'),
-      bottomNavigationBar:
-          const SupplierNavBar(currentIndex: SupplierNavBar.messagesTabIndex),
+      appBar: SupplierAppBar(
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() {
+                  _isSelectionMode = false;
+                  _selectedChatIds.clear();
+                }),
+              )
+            : null,
+        titleWidget: _isSelectionMode ? Text('${_selectedChatIds.length} selected') : null,
+        title: _isSelectionMode ? null : 'Messages',
+        actions: _isSelectionMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  onPressed: () => _confirmAndDeleteSelected(userId),
+                ),
+              ]
+            : null,
+      ),
+      bottomNavigationBar: _isSelectionMode
+          ? null
+          : const SupplierNavBar(currentIndex: SupplierNavBar.messagesTabIndex),
       body: Consumer<ChatViewModel>(
         builder: (context, vm, _) {
           if (vm.isLoading && vm.threads.isEmpty) {
@@ -77,7 +163,10 @@ class _SupplierChatViewState extends State<SupplierChatView> {
           if (vm.errorMessage != null && vm.threads.isEmpty) {
             return _MessagesError(message: vm.errorMessage!, onRetry: _bootstrap);
           }
-          if (vm.threads.isEmpty) {
+          
+          final threads = vm.threads.where((t) => !t.hiddenBy.contains(userId)).toList();
+          
+          if (threads.isEmpty) {
             return const _MessagesEmpty();
           }
           return RefreshIndicator(
@@ -85,11 +174,12 @@ class _SupplierChatViewState extends State<SupplierChatView> {
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              itemCount: vm.threads.length,
+              itemCount: threads.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
-                final thread = vm.threads[index];
+                final thread = threads[index];
                 final hasUnread = thread.unreadSupplier > 0;
+                final isSelected = _selectedChatIds.contains(thread.chatId);
                 return _SupplierThreadTile(
                   displayName: _displayName(thread),
                   avatarLabel: _avatarLabel(thread),
@@ -97,13 +187,24 @@ class _SupplierChatViewState extends State<SupplierChatView> {
                   timeAgo: _timeAgo(thread.lastMessageAt),
                   unreadCount: thread.unreadSupplier,
                   hasUnread: hasUnread,
+                  isSelected: isSelected,
+                  isSelectionMode: _isSelectionMode,
                   onTap: () => _openThread(thread),
+                  onLongPress: () {
+                    if (!_isSelectionMode) {
+                      setState(() {
+                        _isSelectionMode = true;
+                        _selectedChatIds.add(thread.chatId);
+                      });
+                    }
+                  },
                 );
               },
             ),
           );
         },
       ),
+    ),
     );
   }
 }
@@ -115,7 +216,10 @@ class _SupplierThreadTile extends StatelessWidget {
   final String timeAgo;
   final int unreadCount;
   final bool hasUnread;
+  final bool isSelected;
+  final bool isSelectionMode;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _SupplierThreadTile({
     required this.displayName,
@@ -124,29 +228,50 @@ class _SupplierThreadTile extends StatelessWidget {
     required this.timeAgo,
     required this.unreadCount,
     required this.hasUnread,
+    this.isSelected = false,
+    this.isSelectionMode = false,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
+    final iconColor =
+        isSelected ? FieldColors.accentAmber : FieldColors.textMuted;
+    final labelColor =
+        isSelected ? FieldColors.primaryNavy : FieldColors.textMuted;
+    final labelWeight = isSelected ? FontWeight.w600 : FontWeight.w400;
+
     return Material(
-      color: FieldColors.surfaceWhite,
+      color: isSelected ? FieldColors.accentAmber.withValues(alpha: 0.1) : FieldColors.surfaceWhite,
       borderRadius: BorderRadius.circular(FieldRadius.card),
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(FieldRadius.card),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(FieldRadius.card),
             border: Border.all(
-              color: hasUnread
-                  ? FieldColors.accentAmber.withValues(alpha: 0.5)
-                  : FieldColors.borderSubtle,
+              color: isSelected
+                  ? FieldColors.accentAmber
+                  : (hasUnread
+                      ? FieldColors.accentAmber.withValues(alpha: 0.5)
+                      : FieldColors.borderSubtle),
+              width: isSelected ? 1.5 : 1,
             ),
           ),
           child: Row(
             children: [
+              if (isSelectionMode) ...[
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => onTap(),
+                  activeColor: FieldColors.accentAmber,
+                ),
+                const SizedBox(width: 8),
+              ],
               CircleAvatar(
                 radius: 24,
                 backgroundColor: FieldColors.primaryNavy.withValues(alpha: 0.1),
@@ -200,7 +325,7 @@ class _SupplierThreadTile extends StatelessWidget {
                       color: FieldColors.textMuted,
                     ),
                   ),
-                  if (hasUnread) ...[
+                  if (hasUnread && !isSelectionMode) ...[
                     const SizedBox(height: 6),
                     Container(
                       constraints:

@@ -24,6 +24,7 @@ class PaymentProofModel {
   final double? amountDetected;
   final String? transactionIdDetected;
   final List<String>? relatedTransactions;
+  final List<String> hiddenBy;
 
   PaymentProofModel({
     required this.id,
@@ -45,6 +46,7 @@ class PaymentProofModel {
     this.amountDetected,
     this.transactionIdDetected,
     this.relatedTransactions,
+    this.hiddenBy = const [],
   });
 
   // Getters to support view legacy/naming preferences
@@ -74,6 +76,7 @@ class PaymentProofModel {
       relatedTransactions: map['relatedTransactions'] != null 
           ? List<String>.from(map['relatedTransactions']) 
           : null,
+      hiddenBy: List<String>.from(map['hiddenBy'] ?? []),
     );
   }
 
@@ -96,5 +99,52 @@ class PaymentProofModel {
     'amountDetected': amountDetected,
     'transactionIdDetected': transactionIdDetected,
     'relatedTransactions': relatedTransactions,
+    'hiddenBy': hiddenBy,
   };
+
+  PaymentProofModel copyWith({
+    String? id,
+    String? payerId,
+    String? companyId,
+    String? payerName,
+    String? payerRole,
+    double? amount,
+    String? method,
+    String? screenshotUrl,
+    String? status,
+    String? type,
+    String? planId,
+    String? planName,
+    String? adminNotes,
+    String? confirmedBy,
+    DateTime? createdAt,
+    DateTime? confirmedAt,
+    double? amountDetected,
+    String? transactionIdDetected,
+    List<String>? relatedTransactions,
+    List<String>? hiddenBy,
+  }) {
+    return PaymentProofModel(
+      id: id ?? this.id,
+      payerId: payerId ?? this.payerId,
+      companyId: companyId ?? this.companyId,
+      payerName: payerName ?? this.payerName,
+      payerRole: payerRole ?? this.payerRole,
+      amount: amount ?? this.amount,
+      method: method ?? this.method,
+      screenshotUrl: screenshotUrl ?? this.screenshotUrl,
+      status: status ?? this.status,
+      type: type ?? this.type,
+      planId: planId ?? this.planId,
+      planName: planName ?? this.planName,
+      adminNotes: adminNotes ?? this.adminNotes,
+      confirmedBy: confirmedBy ?? this.confirmedBy,
+      createdAt: createdAt ?? this.createdAt,
+      confirmedAt: confirmedAt ?? this.confirmedAt,
+      amountDetected: amountDetected ?? this.amountDetected,
+      transactionIdDetected: transactionIdDetected ?? this.transactionIdDetected,
+      relatedTransactions: relatedTransactions ?? this.relatedTransactions,
+      hiddenBy: hiddenBy ?? this.hiddenBy,
+    );
+  }
 }

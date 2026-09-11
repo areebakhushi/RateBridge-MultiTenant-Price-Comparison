@@ -18,6 +18,9 @@ class SupplierNotificationsView extends StatefulWidget {
 }
 
 class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedNotifIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,20 @@ class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
   }
 
   Future<void> _onNotificationTap(NotificationModel notification) async {
+    if (_isSelectionMode) {
+      setState(() {
+        if (_selectedNotifIds.contains(notification.notifId)) {
+          _selectedNotifIds.remove(notification.notifId);
+          if (_selectedNotifIds.isEmpty) {
+            _isSelectionMode = false;
+          }
+        } else {
+          _selectedNotifIds.add(notification.notifId);
+        }
+      });
+      return;
+    }
+
     final vm = context.read<NotificationViewModel>();
     final uid = vm.uid;
     if (uid == null) return;
@@ -52,6 +69,125 @@ class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
     navigateForSupplierNotification(context, notification);
   }
 
+  void _handleLongPress(NotificationModel notification) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedNotifIds.add(notification.notifId);
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected() async {
+    if (_selectedNotifIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedNotifIds.length} items?'),
+        content: const Text('Are you sure you want to delete these items? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final vm = context.read<NotificationViewModel>();
+      try {
+        await vm.deleteNotifications(_selectedNotifIds.toList());
+        setState(() {
+          _selectedNotifIds.clear();
+          _isSelectionMode = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notifications deleted successfully.')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to delete items: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmAndClearAll() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete all?'),
+        content: const Text('This will permanently remove all removable items from your panel.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete All', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final vm = context.read<NotificationViewModel>();
+      try {
+        await vm.deleteAllNotifications();
+        setState(() {
+          _selectedNotifIds.clear();
+          _isSelectionMode = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All notifications cleared.')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to clear items: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSingleNotification(NotificationModel notification) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete item?'),
+        content: const Text('Are you sure you want to delete this item? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final vm = context.read<NotificationViewModel>();
+      try {
+        await vm.deleteNotification(notification.notifId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notification deleted.')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to delete item: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<NotificationViewModel>();
@@ -59,20 +195,54 @@ class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
     return Scaffold(
       backgroundColor: FieldColors.screenBackground,
       appBar: SupplierAppBar(
-        title: 'Notifications',
-        actions: [
-          if (vm.unreadCount > 0)
-            TextButton(
-              onPressed: _markAllRead,
-              child: Text(
-                'Mark all read',
-                style: AppTextStyles.caption.copyWith(
-                  color: FieldColors.accentAmber,
-                  fontWeight: FontWeight.w700,
+        title: _isSelectionMode ? '${_selectedNotifIds.length} selected' : 'Notifications',
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () {
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedNotifIds.clear();
+                  });
+                },
+              )
+            : null,
+        actions: _isSelectionMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.select_all_rounded),
+                  tooltip: 'Select All',
+                  onPressed: () {
+                    setState(() {
+                      _selectedNotifIds.addAll(vm.notifications.map((n) => n.notifId));
+                    });
+                  },
                 ),
-              ),
-            ),
-        ],
+                IconButton(
+                  icon: const Icon(Icons.delete_rounded),
+                  tooltip: 'Delete Selected',
+                  onPressed: _confirmAndDeleteSelected,
+                ),
+              ]
+            : [
+                if (vm.notifications.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep_rounded),
+                    tooltip: 'Clear All',
+                    onPressed: _confirmAndClearAll,
+                  ),
+                if (vm.unreadCount > 0)
+                  TextButton(
+                    onPressed: _markAllRead,
+                    child: Text(
+                      'Mark all read',
+                      style: AppTextStyles.caption.copyWith(
+                        color: FieldColors.accentAmber,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
       ),
       body: vm.uid == null
           ? const Center(child: CircularProgressIndicator())
@@ -97,12 +267,17 @@ class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {
                             final notification = vm.notifications[index];
+                            final isSelected = _selectedNotifIds.contains(notification.notifId);
                             return _NotificationTile(
                               notification: notification,
                               relativeTime: notificationRelativeTime(
                                 notification.createdAt,
                               ),
+                              isSelectionMode: _isSelectionMode,
+                              isSelected: isSelected,
                               onTap: () => _onNotificationTap(notification),
+                              onLongPress: () => _handleLongPress(notification),
+                              onDeleteSingle: () => _deleteSingleNotification(notification),
                             );
                           },
                         ),
@@ -113,12 +288,20 @@ class _SupplierNotificationsViewState extends State<SupplierNotificationsView> {
 class _NotificationTile extends StatelessWidget {
   final NotificationModel notification;
   final String relativeTime;
+  final bool isSelectionMode;
+  final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onDeleteSingle;
 
   const _NotificationTile({
     required this.notification,
     required this.relativeTime,
+    required this.isSelectionMode,
+    required this.isSelected,
     required this.onTap,
+    required this.onLongPress,
+    required this.onDeleteSingle,
   });
 
   NotificationIconConfig _iconConfig(String type) {
@@ -186,23 +369,35 @@ class _NotificationTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         child: Ink(
           decoration: BoxDecoration(
-            color: isUnread
-                ? FieldColors.primaryNavy.withValues(alpha: 0.04)
-                : Colors.white,
+            color: isSelected
+                ? iconConfig.color.withValues(alpha: 0.08)
+                : (isUnread ? FieldColors.primaryNavy.withValues(alpha: 0.04) : Colors.white),
             borderRadius: BorderRadius.circular(AppRadius.lg),
             border: Border.all(
-              color: isUnread
-                  ? FieldColors.primaryNavy.withValues(alpha: 0.15)
-                  : FieldColors.borderSubtle,
+              color: isSelected
+                  ? iconConfig.color
+                  : (isUnread ? FieldColors.primaryNavy.withValues(alpha: 0.15) : FieldColors.borderSubtle),
+              width: (isSelected || isUnread) ? 1.5 : 1,
             ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (isUnread)
+              if (isSelectionMode) ...[
+                const SizedBox(width: 8),
+                Center(
+                  child: Checkbox(
+                    value: isSelected,
+                    activeColor: iconConfig.color,
+                    onChanged: (_) => onTap(),
+                  ),
+                ),
+              ],
+              if (isUnread && !isSelectionMode)
                 Container(
                   width: 3,
                   margin: const EdgeInsets.symmetric(vertical: 16),
@@ -235,15 +430,45 @@ class _NotificationTile extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              notification.title,
-                              style: AppTextStyles.h3.copyWith(
-                                fontSize: 15,
-                                fontWeight:
-                                    isUnread ? FontWeight.w700 : FontWeight.w600,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    notification.title,
+                                    style: AppTextStyles.h3.copyWith(
+                                      fontSize: 15,
+                                      fontWeight:
+                                          isUnread ? FontWeight.w700 : FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (!isSelectionMode)
+                                  PopupMenuButton<String>(
+                                    icon: const Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onSelected: (val) {
+                                      if (val == 'delete') {
+                                        onDeleteSingle();
+                                      }
+                                    },
+                                    itemBuilder: (ctx) => [
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 4),
                             Text(

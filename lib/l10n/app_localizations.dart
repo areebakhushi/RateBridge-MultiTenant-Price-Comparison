@@ -6,7 +6,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
 import 'app_localizations_en.dart';
-import 'app_localizations_ur.dart';
 
 // ignore_for_file: type=lint
 
@@ -93,11 +92,7 @@ abstract class AppLocalizations {
       ];
 
   /// A list of this localizations delegate's supported locales.
-  static const List<Locale> supportedLocales = <Locale>[
-    Locale('en'),
-    Locale('ur'),
-    Locale.fromSubtags(languageCode: 'ur', scriptCode: 'roman'),
-  ];
+  static const List<Locale> supportedLocales = <Locale>[Locale('en')];
 
   /// No description provided for @appName.
   ///
@@ -140,6 +135,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'My Orders'**
   String get myOrders;
+
+  /// No description provided for @deleteSelected.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Selected'**
+  String get deleteSelected;
+
+  /// No description provided for @selectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select All'**
+  String get selectAll;
+
+  /// No description provided for @clearAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All'**
+  String get clearAll;
+
+  /// No description provided for @deleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {count} items?'**
+  String deleteConfirmTitle(int count);
+
+  /// No description provided for @deleteConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete these items? This action cannot be undone.'**
+  String get deleteConfirmMessage;
+
+  /// No description provided for @clearHistoryConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear History?'**
+  String get clearHistoryConfirmTitle;
+
+  /// No description provided for @clearHistoryConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This will remove the selected history from your account.'**
+  String get clearHistoryConfirmMessage;
+
+  /// No description provided for @deleteSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Items deleted successfully'**
+  String get deleteSuccess;
+
+  /// No description provided for @deleteError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to delete items. Please try again.'**
+  String get deleteError;
 
   /// No description provided for @supplierDashboard.
   ///
@@ -873,31 +922,17 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['en', 'ur'].contains(locale.languageCode);
+      <String>['en'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
-  // Lookup logic when language+script codes are specified.
-  switch (locale.languageCode) {
-    case 'ur':
-      {
-        switch (locale.scriptCode) {
-          case 'roman':
-            return AppLocalizationsUrRoman();
-        }
-        break;
-      }
-  }
-
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
     case 'en':
       return AppLocalizationsEn();
-    case 'ur':
-      return AppLocalizationsUr();
   }
 
   throw FlutterError(

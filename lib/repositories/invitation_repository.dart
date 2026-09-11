@@ -104,4 +104,30 @@ class InvitationRepository {
       throw AppException('Failed to create invitation: ${e.message}');
     }
   }
+
+  /// Creates a supplier invitation by email
+  Future<String> createSupplierInvite(
+    String companyId,
+    String ceoUid,
+    String email,
+    String companyName,
+  ) async {
+    try {
+      final docId = _db.collection(FirestorePaths.invitationsCol).doc().id;
+      final expiresAt = DateTime.now().add(AppConstants.inviteTokenExpiry);
+      await _db.collection(FirestorePaths.invitationsCol).doc(docId).set({
+        'companyId': companyId,
+        'ceoUid': ceoUid,
+        'email': email,
+        'companyName': companyName,
+        'role': 'supplier',
+        'status': 'pending',
+        'expiresAt': Timestamp.fromDate(expiresAt),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return docId;
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to create supplier invitation: ${e.message}');
+    }
+  }
 }

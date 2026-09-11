@@ -97,4 +97,41 @@ class NotificationRepository {
       throw AppException('Failed to mark all notifications as read: ${e.message}');
     }
   }
+
+  Future<void> deleteNotification(String notifId) async {
+    try {
+      await _db.collection('notifications').doc(notifId).delete();
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to delete notification: ${e.message}');
+    }
+  }
+
+  Future<void> deleteNotifications(List<String> notifIds) async {
+    try {
+      final batch = _db.batch();
+      for (final id in notifIds) {
+        batch.delete(_db.collection('notifications').doc(id));
+      }
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to delete notifications: ${e.message}');
+    }
+  }
+
+  Future<void> deleteAllNotifications(String uid) async {
+    try {
+      final snapshots = await _db
+          .collection('notifications')
+          .where('recipientUserId', isEqualTo: uid)
+          .get();
+
+      final batch = _db.batch();
+      for (final doc in snapshots.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to clear notifications: ${e.message}');
+    }
+  }
 }

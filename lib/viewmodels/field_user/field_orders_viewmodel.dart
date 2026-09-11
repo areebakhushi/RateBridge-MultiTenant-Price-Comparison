@@ -126,7 +126,7 @@ class FieldOrdersViewModel extends ChangeNotifier {
     _isLoadingOrders = true;
     notifyListeners();
     _ordersSubscription = _orderRepo
-        .watchFieldUserOrders(fieldUserUid, companyId, 'All')
+        .watchFieldUserOrders(fieldUserUid, companyId, 'All', userId: fieldUserUid)
         .listen(
           (data) {
             _orders = data;
@@ -450,6 +450,17 @@ class FieldOrdersViewModel extends ChangeNotifier {
       return false;
     } finally {
       _isSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Bulk soft-delete orders for a user.
+  Future<void> hideOrders(List<String> orderIds, String userId) async {
+    try {
+      await _orderRepo.hideOrdersForUser(orderIds, userId);
+      // Local filter update happens via stream if watchOrders includes userId.
+    } catch (e) {
+      _errorMessage = e.toString();
       notifyListeners();
     }
   }

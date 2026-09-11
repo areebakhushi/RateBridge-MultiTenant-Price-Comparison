@@ -133,6 +133,44 @@ class SupplierViewModel extends ChangeNotifier {
   bool _earningsInitialized = false;
   bool _ratingsInitialized = false;
 
+  // --- Getters ---
+  String? get supplierUid => _supplierUid;
+  String? get selectedCompanyId => _selectedCompanyId;
+  String? get rejectionReason => _rejectionReason;
+  String? get error => _error;
+  String? get successMessage => _successMessage;
+  bool get isLoading => _isLoading;
+  bool get partnershipListsReady => _partnershipListsReady;
+  
+  // Public exposure for View files
+  List<MaterialModel> get materials => _materials;
+  List<OrderModel> get orders => _orders;
+  List<RatingModel> get ratings => _ratings;
+  List<TransactionModel> get transactions => _transactions;
+  List<CompanyModel> get companies => _companies;
+  List<CompanyModel> get companyDirectory => _companyDirectory;
+  bool get isDashboardLoading => _isDashboardLoading;
+  bool get companiesLoaded => _companiesLoaded;
+  bool get companiesLoadFailed => _companiesLoadFailed;
+  bool get appealSubmitted => _appealSubmitted;
+  UserModel? get profile => _profile;
+  String get status => _status;
+
+  List<PartnershipRequestModel> get incomingPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_incomingPartnershipRequests);
+  List<PartnershipRequestModel> get outgoingPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_outgoingPartnershipRequests);
+  List<PartnershipRequestModel> get allPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_allPartnershipRequests);
+  List<PartnershipRequestModel> get pendingCeoInvitations => _allPartnershipRequests.where((r) => r.isCeoInitiated && r.status == 'pending').toList();
+  List<PartnershipRequestModel> get pendingSupplierSentRequests => _allPartnershipRequests.where((r) => r.isSupplierInitiated && r.status == 'pending').toList();
+  List<PartnershipRequestModel> get pastPartnershipRequests => _allPartnershipRequests.where((r) => r.status == 'rejected' || r.status == 'removed').take(10).toList();
+  int get pendingPartnershipRequestsCount => _allPartnershipRequests.where((r) => r.status == 'pending').length;
+  List<CompanyModel> get activePartnerCompanies => List<CompanyModel>.unmodifiable(_companies);
+  bool get partnershipHubDataLoaded => _partnershipHubDataLoaded;
+  bool get isCommissionRestricted => _commissionRestricted;
+  String? get commissionRestrictionReason => _commissionRestrictionReason;
+  List<PaymentProofModel> get paymentHistory => [..._confirmedCommissionPayments, ..._pendingCommissionPayments]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  List<InvitationModel> get invitations => _invitations;
+  List<MonthlyEarning> get monthlyEarnings => _monthlyEarnings;
+
   // --- Commission Ledger Getters ---
   double get totalCommissionGenerated => _allCommissions.fold(0.0, (sum, tx) => sum + tx.commissionAmount);
   double get totalCommissionPaid => _confirmedCommissionPayments.fold(0.0, (sum, p) => sum + p.amount);
@@ -160,41 +198,6 @@ class SupplierViewModel extends ChangeNotifier {
   double netEarningsForMonth(String month) {
     return grossSalesForMonth(month) * (1 - AppConstants.commissionRate);
   }
-
-  // --- Getters ---
-  String? get supplierUid => _supplierUid;
-  String? get selectedCompanyId => _selectedCompanyId;
-  String? get rejectionReason => _rejectionReason;
-  String? get error => _error;
-  String? get successMessage => _successMessage;
-  bool get isLoading => _isLoading;
-  bool get partnershipListsReady => _partnershipListsReady;
-  List<PartnershipRequestModel> get incomingPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_incomingPartnershipRequests);
-  List<PartnershipRequestModel> get outgoingPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_outgoingPartnershipRequests);
-  List<PartnershipRequestModel> get allPartnershipRequests => List<PartnershipRequestModel>.unmodifiable(_allPartnershipRequests);
-  List<PartnershipRequestModel> get pendingCeoInvitations => _allPartnershipRequests.where((r) => r.isCeoInitiated && r.status == 'pending').toList();
-  List<PartnershipRequestModel> get pendingSupplierSentRequests => _allPartnershipRequests.where((r) => r.isSupplierInitiated && r.status == 'pending').toList();
-  List<PartnershipRequestModel> get pastPartnershipRequests => _allPartnershipRequests.where((r) => r.status == 'rejected' || r.status == 'removed').take(10).toList();
-  int get pendingPartnershipRequestsCount => _allPartnershipRequests.where((r) => r.status == 'pending').length;
-  List<CompanyModel> get activePartnerCompanies => List<CompanyModel>.unmodifiable(_companies);
-  bool get partnershipHubDataLoaded => _partnershipHubDataLoaded;
-  bool get isDashboardLoading => _isDashboardLoading;
-  bool get companiesLoaded => _companiesLoaded;
-  bool get companiesLoadFailed => _companiesLoadFailed;
-  bool get appealSubmitted => _appealSubmitted;
-  List<MaterialModel> get materials => _materials;
-  List<OrderModel> get orders => _orders;
-  List<RatingModel> get ratings => _ratings;
-  List<TransactionModel> get transactions => _transactions;
-  List<CompanyModel> get companies => _companies;
-  List<CompanyModel> get companyDirectory => _companyDirectory;
-  List<InvitationModel> get invitations => _invitations;
-  List<MonthlyEarning> get monthlyEarnings => _monthlyEarnings;
-  UserModel? get profile => _profile;
-  bool get isCommissionRestricted => _commissionRestricted;
-  String? get commissionRestrictionReason => _commissionRestrictionReason;
-  String get status => _status;
-  List<PaymentProofModel> get paymentHistory => [..._confirmedCommissionPayments, ..._pendingCommissionPayments]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   int get totalMaterialsCount => _materials.length;
   int get pendingOrdersCount => _orders.where((o) {
@@ -288,7 +291,10 @@ class SupplierViewModel extends ChangeNotifier {
     _commissionsSub = _db.collection(FirestorePaths.transactionsCol)
         .where('supplierUid', isEqualTo: uid)
         .snapshots().listen((snap) {
-          _allCommissions = snap.docs.map((d) => TransactionModel.fromMap(d.id, d.data())).toList();
+          _allCommissions = snap.docs
+              .map((d) => TransactionModel.fromMap(d.id, d.data()))
+              .where((tx) => !tx.hiddenBy.contains(uid))
+              .toList();
           _earningsInitialized = true;
           _checkDashboardReady();
           notifyListeners();
@@ -299,8 +305,10 @@ class SupplierViewModel extends ChangeNotifier {
         .where('payerId', isEqualTo: uid)
         .where('type', isEqualTo: 'commission')
         .snapshots().listen((snap) {
-          final all = snap.docs.map((d) => PaymentProofModel.fromMap(d.id, d.data())).toList();
-          // Include 'settled' status so commissionOwed decreases when Admin marks as settled
+          final all = snap.docs
+              .map((d) => PaymentProofModel.fromMap(d.id, d.data()))
+              .where((p) => !p.hiddenBy.contains(uid))
+              .toList();
           _confirmedCommissionPayments = all.where((p) => p.status == 'confirmed' || p.status == 'approved' || p.status == 'settled').toList();
           _pendingCommissionPayments = all.where((p) => p.status == 'pending').toList();
           notifyListeners();
@@ -316,9 +324,6 @@ class SupplierViewModel extends ChangeNotifier {
     _backfillMissingCommissionTransactions(uid);
   }
 
-  /// Confirmed orders update gross/net from the orders collection. Owed is
-  /// read from `transactions`. If a confirm path skipped that write, create
-  /// the missing unsettled rows (idempotent doc id `comm_{orderId}`).
   Future<void> _backfillMissingCommissionTransactions(String uid) async {
     try {
       final snap = await _db
@@ -367,7 +372,6 @@ class SupplierViewModel extends ChangeNotifier {
       }, onError: (_) {});
   }
 
-  // --- Notification Prefs ---
   static const Map<String, bool> defaultNotificationPrefs = {
     'pushEnabled': true, 'newOrders': true, 'orderUpdates': true,
     'chatMessages': true, 'ratings': true, 'earnings': true,
@@ -697,19 +701,17 @@ class SupplierViewModel extends ChangeNotifier {
         );
       }
 
-      final payload = <String, dynamic>{
-        'archived': true,
-        'archivedAt': FieldValue.serverTimestamp(),
-      };
-      await _db.collection('materials').doc(matId).update(payload);
+      await _db.collection('materials').doc(matId).delete();
       try {
         await _db
             .collection('companies')
             .doc(companyId)
             .collection('materials')
             .doc(matId)
-            .update(payload);
+            .delete();
       } catch (_) {}
+      
+      _successMessage = 'Material deleted successfully.';
     } catch (e) {
       _error = e is AppException ? e.message : e.toString();
       rethrow;
@@ -726,14 +728,6 @@ class SupplierViewModel extends ChangeNotifier {
           _materials = snap.docs.map((d) {
             final data = Map<String, dynamic>.from(d.data())..putIfAbsent('id', () => d.id);
             final material = MaterialModel.fromMap(data);
-            assert(() {
-              debugPrint(
-                '[Materials] id=${material.id} name=${material.name} '
-                'raw.profileImageUrl=${data['profileImageUrl']} '
-                'parsed=${material.profileImageUrl}',
-              );
-              return true;
-            }());
             return material;
           }).toList();
           _materialsInitialized = true; _checkDashboardReady(); notifyListeners();
@@ -741,9 +735,10 @@ class SupplierViewModel extends ChangeNotifier {
   }
 
   Future<void> loadOrders(String companyId, String? statusFilter) async {
-    if (_supplierUid == null) { _ordersInitialized = true; _checkDashboardReady(); notifyListeners(); return; }
+    final uid = _supplierUid;
+    if (uid == null) { _ordersInitialized = true; _checkDashboardReady(); notifyListeners(); return; }
     _ordersSubscription?.cancel();
-    _ordersSubscription = _orderRepo.getOrdersForSupplier(_supplierUid!).listen((data) {
+    _ordersSubscription = _orderRepo.getOrdersForSupplier(uid, userId: uid).listen((data) {
         _orders = data.where((o) => o.companyId == companyId).toList();
         _ordersInitialized = true; _checkDashboardReady(); notifyListeners();
       });
@@ -777,11 +772,13 @@ class SupplierViewModel extends ChangeNotifier {
   }
 
   Future<void> loadEarnings(String month) async {
+    final uid = _supplierUid;
+    if (uid == null) return;
     final start = DateTime.parse('$month-01');
     final end = DateTime(start.month == 12 ? start.year + 1 : start.year, start.month == 12 ? 1 : start.month + 1, 1);
     _transactions = _allCommissions.where((tx) => !tx.createdAt.isBefore(start) && tx.createdAt.isBefore(end)).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     try {
-        final summary = await _transactionRepo.getMonthlyEarningsSummary(_supplierUid!, 6);
+        final summary = await _transactionRepo.getMonthlyEarningsSummary(uid, 6);
         _monthlyEarnings = summary;
     } catch (_) {}
     notifyListeners();
@@ -802,14 +799,48 @@ class SupplierViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearAppealState() {
+    _appealSubmitted = false;
+    _error = null;
+    notifyListeners();
+  }
+
   Future<void> submitAppeal(String message, File? file, String? phone) async {
-    _isLoading = true; notifyListeners();
+    _error = null;
+    _isLoading = true;
+    notifyListeners();
     try {
+      final existing = await _db.collection('appeals')
+          .where('uid', isEqualTo: _supplierUid)
+          .where('status', isEqualTo: 'pending')
+          .get();
+      if (existing.docs.isNotEmpty) {
+        _error = 'Your appeal is already under review.';
+        return;
+      }
+
       String? imageUrl;
       if (file != null) imageUrl = await _storageService.uploadFile(file: file, path: 'appeals/$_supplierUid');
-      await _db.collection('appeals').add({'supplierUid': _supplierUid, 'message': message, 'phone': phone, 'imageUrl': imageUrl, 'createdAt': FieldValue.serverTimestamp(), 'status': 'pending'});
+      await _db.collection('appeals').add({
+        'uid': _supplierUid,
+        'supplierUid': _supplierUid,
+        'role': 'Supplier',
+        'name': _profile?.name ?? 'Supplier',
+        'companyId': _selectedCompanyId ?? '',
+        'message': message,
+        'phone': phone,
+        'imageUrl': imageUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'pending',
+        'rejectionReason': _rejectionReason ?? '',
+      });
       _appealSubmitted = true;
-    } catch (e) { _error = e.toString(); } finally { _isLoading = false; notifyListeners(); }
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> loadCompanyDirectory() async {
@@ -913,7 +944,6 @@ class SupplierViewModel extends ChangeNotifier {
       final url = await _uploadImageBytes(bytes: await screenshotFile.readAsBytes(), folder: 'commission_proofs/$_supplierUid', filename: 'comm_${DateTime.now().millisecondsSinceEpoch}.jpg');
       if (url == null) throw Exception("Upload failed");
 
-      // Collect IDs of unsettled transactions to link them for source-of-truth updates
       final unsettledTxIds = _allCommissions
           .where((tx) => tx.status.toLowerCase() == 'unsettled' || tx.status.toLowerCase() == 'pending')
           .map((tx) => tx.txId)
@@ -941,8 +971,15 @@ class SupplierViewModel extends ChangeNotifier {
   }
 
   Stream<List<RfqModel>> streamOpenRfqsForSupplier() {
-    if (_supplierUid == null) return Stream.value([]);
-    return _db.collection('rfqs').where('status', isEqualTo: 'open').snapshots().map((snap) => snap.docs.map((doc) => RfqModel.fromMap(doc.id, doc.data())).toList());
+    final uid = _supplierUid;
+    if (uid == null) return Stream.value([]);
+    return _db.collection('rfqs')
+        .where('status', isEqualTo: 'open')
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => RfqModel.fromMap(doc.id, doc.data()))
+            .where((r) => !r.hiddenBy.contains(uid))
+            .toList());
   }
 
   Future<void> submitRfqBid({required String rfqId, required double bidPrice, required String deliveryTime, String? note}) async {
@@ -952,7 +989,6 @@ class SupplierViewModel extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      // Firestore job instead of HTTPS callable — Flutter web is blocked by CORS.
       final ref = _db.collection('rfq_bid_jobs').doc();
       await ref.set({
         'uid': uid,
@@ -1043,6 +1079,62 @@ class SupplierViewModel extends ChangeNotifier {
     final bid = RfqBidModel.fromMap(doc.id, doc.data()!);
     if (bid.isWithdrawn) return null;
     return bid;
+  }
+
+  Future<void> hideTransaction(String txId) async {
+    if (_supplierUid == null) return;
+    try {
+      await _transactionRepo.hideTransactionForUser(txId, _supplierUid!);
+      _allCommissions.removeWhere((tx) => tx.txId == txId);
+      _transactions.removeWhere((tx) => tx.txId == txId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearPaymentHistory() async {
+    if (_supplierUid == null) return;
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _transactionRepo.hideAllPaymentProofsForUser(_supplierUid!);
+      _confirmedCommissionPayments.clear();
+      _pendingCommissionPayments.clear();
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> hideOrder(String orderId) async {
+    if (_supplierUid == null) return;
+    try {
+      await _orderRepo.hideOrderForUser(orderId, _supplierUid!);
+      _orders.removeWhere((o) => o.orderId == orderId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> hideOrders(List<String> orderIds) async {
+    if (_supplierUid == null) return;
+    try {
+      await _orderRepo.hideOrdersForUser(orderIds, _supplierUid!);
+      _orders.removeWhere((o) => orderIds.contains(o.orderId));
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
   }
 
   void _cancelSubscriptions() {

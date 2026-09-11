@@ -30,6 +30,37 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myOrders => 'My Orders';
 
   @override
+  String get deleteSelected => 'Delete Selected';
+
+  @override
+  String get selectAll => 'Select All';
+
+  @override
+  String get clearAll => 'Clear All';
+
+  @override
+  String deleteConfirmTitle(int count) {
+    return 'Delete $count items?';
+  }
+
+  @override
+  String get deleteConfirmMessage =>
+      'Are you sure you want to delete these items? This action cannot be undone.';
+
+  @override
+  String get clearHistoryConfirmTitle => 'Clear History?';
+
+  @override
+  String get clearHistoryConfirmMessage =>
+      'This will remove the selected history from your account.';
+
+  @override
+  String get deleteSuccess => 'Items deleted successfully';
+
+  @override
+  String get deleteError => 'Unable to delete items. Please try again.';
+
+  @override
   String get supplierDashboard => 'Supplier Dashboard';
 
   @override

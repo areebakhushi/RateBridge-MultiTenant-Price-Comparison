@@ -479,6 +479,83 @@ class AdminViewModel extends ChangeNotifier {
     loadSuppliers();
   }
 
+  Future<void> acceptAppeal(Map<String, dynamic> appeal, String appealId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final uid = appeal['uid'] as String;
+      final role = (appeal['role'] as String).toLowerCase();
+      final batch = _db.batch();
+
+      batch.update(_db.collection('appeals').doc(appealId), {
+        'status': 'accepted',
+        'respondedAt': FieldValue.serverTimestamp(),
+        'respondedBy': _uid ?? 'admin',
+      });
+
+      if (role == 'supplier') {
+        batch.update(_db.collection('users').doc(uid), {'status': 'active', 'approved': true});
+        batch.update(_db.collection('suppliers').doc(uid), {'status': 'Active', 'isVerified': true});
+      } else if (role == 'ceo') {
+        final companyId = appeal['companyId'] as String;
+        String inviteCode = InviteCodeGenerator.generate();
+        batch.update(_db.collection('users').doc(uid), {'status': 'active', 'approved': true});
+        if (companyId.isNotEmpty) {
+          batch.update(_db.collection('companies').doc(companyId), {
+            'status': 'active',
+            'inviteCode': inviteCode,
+            'inviteCodeGeneratedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+      await _logAction(actionType: 'accept_appeal', targetType: 'appeal', targetId: appealId, description: 'Accepted $role appeal for ${appeal['name']}');
+      
+      if (_notificationService != null) {
+        await _notificationService!.notifyPaymentStatus(
+          userId: uid,
+          companyId: appeal['companyId'] ?? '',
+          title: 'Appeal Accepted ✅',
+          message: 'Your account appeal has been accepted. You now have full access.',
+          data: {'status': 'active'},
+        );
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> rejectAppeal(Map<String, dynamic> appeal, String appealId, String reason) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _db.collection('appeals').doc(appealId).update({
+        'status': 'rejected',
+        'adminResponse': reason,
+        'respondedAt': FieldValue.serverTimestamp(),
+        'respondedBy': _uid ?? 'admin',
+      });
+
+      final uid = appeal['uid'] as String;
+      await _logAction(actionType: 'reject_appeal', targetType: 'appeal', targetId: appealId, description: 'Rejected appeal for ${appeal['name']}', reason: reason);
+      
+      if (_notificationService != null) {
+        await _notificationService!.notifyPaymentStatus(
+          userId: uid,
+          companyId: appeal['companyId'] ?? '',
+          title: 'Appeal Rejected ❌',
+          message: 'Your account appeal was rejected. Reason: $reason',
+          data: {'status': 'rejected', 'reason': reason},
+        );
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> addCategory(String name, String unit, List<String> brands, List<String> grades, {String iconKey = 'construction_outlined'}) async {
     final docRef = await _db.collection('categories').add({
       'name': name, 'unit': unit, 'brands': brands, 'grades': grades, 'icon': iconKey, 'active': true, 'activeMaterialsCount': 0, 'createdAt': FieldValue.serverTimestamp(),

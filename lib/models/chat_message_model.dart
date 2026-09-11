@@ -12,6 +12,8 @@ class ChatMessageModel {
   final DateTime timestamp;
   final String? attachmentUrl;
   final bool isRead;
+  final List<String> hiddenBy;
+  final bool isDeletedForEveryone;
 
   ChatMessageModel({
     required this.id,
@@ -24,6 +26,8 @@ class ChatMessageModel {
     required this.timestamp,
     this.attachmentUrl,
     this.isRead = false,
+    this.hiddenBy = const [],
+    this.isDeletedForEveryone = false,
   });
 
   ChatMessageModel copyWith({
@@ -37,6 +41,8 @@ class ChatMessageModel {
     DateTime? timestamp,
     String? attachmentUrl,
     bool? isRead,
+    List<String>? hiddenBy,
+    bool? isDeletedForEveryone,
   }) {
     return ChatMessageModel(
       id: id ?? this.id,
@@ -49,6 +55,8 @@ class ChatMessageModel {
       timestamp: timestamp ?? this.timestamp,
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       isRead: isRead ?? this.isRead,
+      hiddenBy: hiddenBy ?? this.hiddenBy,
+      isDeletedForEveryone: isDeletedForEveryone ?? this.isDeletedForEveryone,
     );
   }
 
@@ -62,6 +70,8 @@ class ChatMessageModel {
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': isRead,
       if (attachmentUrl != null) 'attachmentUrl': attachmentUrl,
+      'hiddenBy': hiddenBy,
+      'isDeletedForEveryone': isDeletedForEveryone,
     };
   }
 
@@ -77,6 +87,8 @@ class ChatMessageModel {
       timestamp: _parseTimestamp(map['timestamp']),
       attachmentUrl: map['attachmentUrl'] as String?,
       isRead: map['isRead'] as bool? ?? false,
+      hiddenBy: List<String>.from(map['hiddenBy'] ?? []),
+      isDeletedForEveryone: map['isDeletedForEveryone'] as bool? ?? false,
     );
   }
 

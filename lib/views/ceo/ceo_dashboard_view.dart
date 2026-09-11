@@ -10,6 +10,7 @@ import '../../constants/route_names.dart';
 import '../../models/order_model.dart';
 import '../../theme/ceo_theme.dart';
 import '../../theme/field_theme.dart';
+import '../../utils/app_navigation.dart';
 import '../../utils/formatters.dart';
 import '../../viewmodels/ceo_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -79,244 +80,248 @@ class _CeoDashboardViewState extends State<CeoDashboardView> {
     final notifVm = context.watch<NotificationViewModel>();
     final companyId = authVm.user?.companyId ?? '';
 
-    return Scaffold(
-      backgroundColor: CeoColors.screenBg,
-      body: Consumer<CeoViewModel>(
-        builder: (context, vm, _) {
-          if (vm.isLoading && vm.company == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return RootTabPopScope(
+      isHome: true,
+      homeRoute: RouteNames.ceoDashboard,
+      child: Scaffold(
+        backgroundColor: CeoColors.screenBg,
+        body: Consumer<CeoViewModel>(
+          builder: (context, vm, _) {
+            if (vm.isLoading && vm.company == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final inviteCode = vm.company?.inviteCode ?? 'RB-XXXXXX';
-          final companyName = vm.company?.name ?? 'Dashboard';
+            final inviteCode = vm.company?.inviteCode ?? 'RB-XXXXXX';
+            final companyName = vm.company?.name ?? 'Dashboard';
 
-          return RefreshIndicator(
-            onRefresh: () => vm.loadDashboard(),
-            color: FieldColors.primaryNavy,
-            child: StreamBuilder<Map<String, dynamic>>(
-              stream: vm.watchDashboardStats(companyId),
-              builder: (context, snapshot) {
-                final stats = snapshot.data ?? {};
-                final pendingOrders =
-                    (stats['pendingOrderApprovals'] ?? 0) as int;
-                final pendingJoin = (stats['pendingJoinCount'] ?? 0) as int;
-                final fieldUserCount = (stats['fieldUserCount'] ?? 0) as int;
-                final supplierCount =
-                    (stats['activeSupplierCount'] ?? 0) as int;
-                final plan = stats['plan'] ?? 'Free';
-                final expiresAt = stats['expiresAt'] as DateTime?;
-                final daysLeft = expiresAt != null
-                    ? expiresAt.difference(DateTime.now()).inDays
-                    : 0;
+            return RefreshIndicator(
+              onRefresh: () => vm.loadDashboard(),
+              color: FieldColors.primaryNavy,
+              child: StreamBuilder<Map<String, dynamic>>(
+                stream: vm.watchDashboardStats(companyId),
+                builder: (context, snapshot) {
+                  final stats = snapshot.data ?? {};
+                  final pendingOrders =
+                      (stats['pendingOrderApprovals'] ?? 0) as int;
+                  final pendingJoin = (stats['pendingJoinCount'] ?? 0) as int;
+                  final fieldUserCount = (stats['fieldUserCount'] ?? 0) as int;
+                  final supplierCount =
+                      (stats['activeSupplierCount'] ?? 0) as int;
+                  final plan = stats['plan'] ?? 'Free';
+                  final expiresAt = stats['expiresAt'] as DateTime?;
+                  final daysLeft = expiresAt != null
+                      ? expiresAt.difference(DateTime.now()).inDays
+                      : 0;
 
-                return CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: BouncingScrollPhysics(),
-                  ),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: DashboardHeroHeader(
-                        greeting: _greeting(),
-                        headline: companyName,
-                        initials: _initials(authVm.user?.name ?? vm.name),
-                        unreadCount: notifVm.unreadCount,
-                        isLoading: vm.isLoading,
-                        onNotifications: () =>
-                            context.push(RouteNames.ceoNotifications),
-                        onProfile: () => context.push(RouteNames.ceoProfile),
-                        stats: [
-                          DashboardHeroStat(
-                            value: '$fieldUserCount',
-                            label: 'Team',
-                            onTap: () =>
-                                context.push(RouteNames.ceoFieldUsers),
-                          ),
-                          DashboardHeroStat(
-                            value: '$supplierCount',
-                            label: 'Partners',
-                            onTap: () =>
-                                context.push(RouteNames.ceoMySuppliers),
-                          ),
-                          DashboardHeroStat(
-                            value: '$pendingOrders',
-                            label: 'To review',
-                            onTap: () => context.push(
-                              '${RouteNames.ceoOrders}?tab=1',
-                            ),
-                          ),
-                        ],
-                      ),
+                  return CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                      sliver: SliverToBoxAdapter(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            CeoInviteCodeCard(
-                              inviteCode: inviteCode,
-                              inviteCodeGeneratedAt:
-                                  vm.company?.inviteCodeGeneratedAt,
-                              onCopy: () => _copyInviteCode(inviteCode),
-                              onRegenerate: () => _regenerateCode(vm),
-                              isRegenerating: _regeneratingCode,
-                            ),
-                            if (pendingOrders > 0) ...[
-                              const SizedBox(height: 16),
-                              CeoPendingApprovalBanner(
-                                count: pendingOrders,
-                                onTap: () => context.push(
-                                  '${RouteNames.ceoOrders}?tab=1',
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            DashboardSummaryStatCard(
-                              icon: Icons.pending_actions_rounded,
-                              value: '$pendingJoin',
-                              label: 'Pending Requests',
-                              color: CeoColors.amber,
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: DashboardHeroHeader(
+                          greeting: _greeting(),
+                          headline: companyName,
+                          initials: _initials(authVm.user?.name ?? vm.name),
+                          unreadCount: notifVm.unreadCount,
+                          isLoading: vm.isLoading,
+                          onNotifications: () =>
+                              context.push(RouteNames.ceoNotifications),
+                          onProfile: () => context.push(RouteNames.ceoProfile),
+                          stats: [
+                            DashboardHeroStat(
+                              value: '$fieldUserCount',
+                              label: 'Team',
                               onTap: () =>
-                                  context.push(RouteNames.ceoJoinRequests),
+                                  context.push(RouteNames.ceoFieldUsers),
                             ),
-                            const SizedBox(height: 16),
-                            _SubscriptionCard(
-                              plan: plan.toString(),
-                              expiresAt: expiresAt,
-                              daysLeft: daysLeft,
+                            DashboardHeroStat(
+                              value: '$supplierCount',
+                              label: 'Partners',
+                              onTap: () =>
+                                  context.push(RouteNames.ceoMySuppliers),
                             ),
-                            if (expiresAt != null && daysLeft < 7) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: CeoColors.red.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.warning_amber_rounded,
-                                      color: CeoColors.amber,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Subscription expiring in $daysLeft days — Renew now',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          color: CeoColors.darkAmber,
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => context.push(
-                                        RouteNames.ceoSubscription,
-                                      ),
-                                      child: const Text('Renew'),
-                                    ),
-                                  ],
-                                ),
+                            DashboardHeroStat(
+                              value: '$pendingOrders',
+                              label: 'To review',
+                              onTap: () => context.push(
+                                '${RouteNames.ceoOrders}?tab=1',
                               ),
-                            ],
-                            const SizedBox(height: 24),
-                            Text(
-                              'Quick Actions',
-                              style: CeoTheme.titleStyle(size: 16).copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            GridView.count(
-                              crossAxisCount: 2,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 1.35,
-                              children: [
-                                DashboardQuickActionTile(
-                                  label: 'My Suppliers',
-                                  icon: Icons.store_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoMySuppliers),
-                                ),
-                                DashboardQuickActionTile(
-                                  label: 'Invite Suppliers',
-                                  icon: Icons.person_add_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoInvite),
-                                ),
-                                DashboardQuickActionTile(
-                                  label: 'Field Users',
-                                  icon: Icons.groups_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoFieldUsers),
-                                ),
-                                DashboardQuickActionTile(
-                                  label: 'All Orders',
-                                  icon: Icons.receipt_long_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoOrders),
-                                ),
-                                DashboardQuickActionTile(
-                                  label: 'Bulk Quotes',
-                                  icon: Icons.request_quote_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoRfqs),
-                                ),
-                                DashboardQuickActionTile(
-                                  label: 'Issues',
-                                  icon: Icons.report_problem_rounded,
-                                  onTap: () =>
-                                      context.push(RouteNames.ceoDisputes),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Recent Orders',
-                              style: CeoTheme.titleStyle(size: 16).copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            StreamBuilder<List<OrderModel>>(
-                              stream: vm.watchCompanyOrders(companyId, 'All'),
-                              builder: (context, snap) {
-                                final orders =
-                                    (snap.data ?? []).take(5).toList();
-                                if (orders.isEmpty) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    child: Text(
-                                      'No orders yet',
-                                      style: CeoTheme.mutedStyle(),
-                                    ),
-                                  );
-                                }
-                                return Column(
-                                  children: orders
-                                      .map((order) => _orderRow(order))
-                                      .toList(),
-                                );
-                              },
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          );
-        },
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              CeoInviteCodeCard(
+                                inviteCode: inviteCode,
+                                inviteCodeGeneratedAt:
+                                    vm.company?.inviteCodeGeneratedAt,
+                                onCopy: () => _copyInviteCode(inviteCode),
+                                onRegenerate: () => _regenerateCode(vm),
+                                isRegenerating: _regeneratingCode,
+                              ),
+                              if (pendingOrders > 0) ...[
+                                const SizedBox(height: 16),
+                                CeoPendingApprovalBanner(
+                                  count: pendingOrders,
+                                  onTap: () => context.push(
+                                    '${RouteNames.ceoOrders}?tab=1',
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              DashboardSummaryStatCard(
+                                icon: Icons.pending_actions_rounded,
+                                value: '$pendingJoin',
+                                label: 'Pending Requests',
+                                color: CeoColors.amber,
+                                onTap: () =>
+                                    context.push(RouteNames.ceoJoinRequests),
+                              ),
+                              const SizedBox(height: 16),
+                              _SubscriptionCard(
+                                plan: plan.toString(),
+                                expiresAt: expiresAt,
+                                daysLeft: daysLeft,
+                              ),
+                              if (expiresAt != null && daysLeft < 7) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: CeoColors.red.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.warning_amber_rounded,
+                                        color: CeoColors.amber,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Subscription expiring in $daysLeft days — Renew now',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: CeoColors.darkAmber,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => context.push(
+                                          RouteNames.ceoSubscription,
+                                        ),
+                                        child: const Text('Renew'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 24),
+                              Text(
+                                'Quick Actions',
+                                style: CeoTheme.titleStyle(size: 16).copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              GridView.count(
+                                crossAxisCount: 2,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 1.35,
+                                children: [
+                                  DashboardQuickActionTile(
+                                    label: 'My Suppliers',
+                                    icon: Icons.store_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoMySuppliers),
+                                  ),
+                                  DashboardQuickActionTile(
+                                    label: 'Invite Suppliers',
+                                    icon: Icons.person_add_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoInvite),
+                                  ),
+                                  DashboardQuickActionTile(
+                                    label: 'Field Users',
+                                    icon: Icons.groups_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoFieldUsers),
+                                  ),
+                                  DashboardQuickActionTile(
+                                    label: 'All Orders',
+                                    icon: Icons.receipt_long_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoOrders),
+                                  ),
+                                  DashboardQuickActionTile(
+                                    label: 'Bulk Quotes',
+                                    icon: Icons.request_quote_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoRfqs),
+                                  ),
+                                  DashboardQuickActionTile(
+                                    label: 'Issues',
+                                    icon: Icons.report_problem_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.ceoDisputes),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Recent Orders',
+                                style: CeoTheme.titleStyle(size: 16).copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              StreamBuilder<List<OrderModel>>(
+                                stream: vm.watchCompanyOrders(companyId, 'All'),
+                                builder: (context, snap) {
+                                  final orders =
+                                      (snap.data ?? []).take(5).toList();
+                                  if (orders.isEmpty) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 16,
+                                      ),
+                                      child: Text(
+                                        'No orders yet',
+                                        style: CeoTheme.mutedStyle(),
+                                      ),
+                                    );
+                                  }
+                                  return Column(
+                                    children: orders
+                                        .map((order) => _orderRow(order))
+                                        .toList(),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        bottomNavigationBar: const CeoNavBar(currentIndex: 0),
       ),
-      bottomNavigationBar: const CeoNavBar(currentIndex: 0),
     );
   }
 

@@ -129,6 +129,33 @@ class InviteViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> sendSupplierInvite({
+    required String email,
+    required String companyId,
+    required String ceoUid,
+    required String companyName,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final token = await _invitationRepo.createSupplierInvite(
+        companyId, ceoUid, email, companyName,
+      );
+      final link = await _dynamicLinks.generateInviteLink(token);
+      await _shareText(
+        'You have been invited to supply for $companyName on RateBridge.\nTap to accept: $link',
+        subject: 'RateBridge Supplier Invitation',
+      );
+    } catch(e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> sendJoinRequest(
     String supplierUid,
     String companyId,

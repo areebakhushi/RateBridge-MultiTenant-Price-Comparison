@@ -16,6 +16,7 @@ class RfqModel {
   final String? awardedSupplierId;
   final String? createdByUid;
   final String? createdByName;
+  final List<String> deletedBy;
 
   RfqModel({
     required this.id,
@@ -33,7 +34,10 @@ class RfqModel {
     this.awardedSupplierId,
     this.createdByUid,
     this.createdByName,
+    this.deletedBy = const [],
   });
+
+  List<String> get hiddenBy => deletedBy;
 
   factory RfqModel.fromMap(String id, Map<String, dynamic> map) {
     return RfqModel(
@@ -52,6 +56,7 @@ class RfqModel {
       awardedSupplierId: map['awardedSupplierId'],
       createdByUid: map['createdByUid'],
       createdByName: map['createdByName'],
+      deletedBy: List<String>.from(map['deletedBy'] ?? map['hiddenBy'] ?? []),
     );
   }
 
@@ -71,6 +76,45 @@ class RfqModel {
       'awardedSupplierId': awardedSupplierId,
       'createdByUid': createdByUid,
       'createdByName': createdByName,
+      'deletedBy': deletedBy,
     };
+  }
+
+  RfqModel copyWith({
+    String? id,
+    String? companyId,
+    String? companyName,
+    String? category,
+    String? materialDescription,
+    double? quantity,
+    String? unit,
+    String? city,
+    DateTime? requiredByDate,
+    String? status,
+    DateTime? createdAt,
+    String? awardedBidId,
+    String? awardedSupplierId,
+    String? createdByUid,
+    String? createdByName,
+    List<String>? deletedBy,
+  }) {
+    return RfqModel(
+      id: id ?? this.id,
+      companyId: companyId ?? this.companyId,
+      companyName: companyName ?? this.companyName,
+      category: category ?? this.category,
+      materialDescription: materialDescription ?? this.materialDescription,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
+      city: city ?? this.city,
+      requiredByDate: requiredByDate ?? this.requiredByDate,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+      awardedBidId: awardedBidId ?? this.awardedBidId,
+      awardedSupplierId: awardedSupplierId ?? this.awardedSupplierId,
+      createdByUid: createdByUid ?? this.createdByUid,
+      createdByName: createdByName ?? this.createdByName,
+      deletedBy: deletedBy ?? this.deletedBy,
+    );
   }
 }

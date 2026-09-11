@@ -197,6 +197,32 @@ class OrderViewModel extends ChangeNotifier {
     }
   }
 
+  /// Hides a single order from the current user's view (soft delete).
+  Future<void> hideOrder(String orderId, String userId) async {
+    try {
+      await _orderRepo.hideOrderForUser(orderId, userId);
+      _orders.removeWhere((o) => o.orderId == orderId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Hides multiple orders from the current user's view.
+  Future<void> hideOrders(List<String> orderIds, String userId) async {
+    try {
+      await _orderRepo.hideOrdersForUser(orderIds, userId);
+      _orders.removeWhere((o) => orderIds.contains(o.orderId));
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   @override
   void dispose() {
     _ordersSubscription?.cancel();

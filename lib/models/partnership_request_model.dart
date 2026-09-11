@@ -16,6 +16,7 @@ class PartnershipRequestModel {
   final String? supplierCity;
   final List<String> supplierCategories;
   final double supplierRating;
+  final List<String> deletedBy;
 
   PartnershipRequestModel({
     required this.requestId,
@@ -33,6 +34,7 @@ class PartnershipRequestModel {
     this.supplierCity,
     this.supplierCategories = const [],
     this.supplierRating = 0,
+    this.deletedBy = const [],
   });
 
   factory PartnershipRequestModel.fromMap(
@@ -67,7 +69,29 @@ class PartnershipRequestModel {
       supplierRating: (map['supplierRating'] as num?)?.toDouble() ??
           (map['rating'] as num?)?.toDouble() ??
           0,
+      deletedBy: List<String>.from(map['deletedBy'] ?? []),
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'requestId': requestId,
+      'companyId': companyId,
+      'companyName': companyName,
+      'supplierId': supplierId,
+      'supplierName': supplierName,
+      'initiatedBy': initiatedBy,
+      'status': status,
+      'message': message,
+      'rejectionReason': rejectionReason,
+      'createdAt': Timestamp.fromDate(createdAt),
+      if (respondedAt != null) 'respondedAt': Timestamp.fromDate(respondedAt!),
+      'supplierEmail': supplierEmail,
+      'supplierCity': supplierCity,
+      'supplierCategories': supplierCategories,
+      'supplierRating': supplierRating,
+      'deletedBy': deletedBy,
+    };
   }
 
   static String _normalizeInitiatedBy(String? value) {

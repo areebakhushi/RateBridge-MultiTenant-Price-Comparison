@@ -55,27 +55,29 @@ class AppBackButton extends StatelessWidget {
   }
 }
 
-/// History of IndexedStack tab indices so system/browser back can return to
-/// the tab the user actually came from (Field shell, Admin shell).
+/// Simple tab index management for IndexedStack shells.
+/// Modified to support "Any non-home tab -> Back -> Home" flow.
 class TabHistory {
-  TabHistory({int initial = 0}) : _stack = <int>[initial];
+  TabHistory({int initial = 0}) : _index = initial;
 
-  final List<int> _stack;
+  int _index;
 
-  int get index => _stack.last;
+  int get index => _index;
 
-  bool get canPop => _stack.length > 1;
+  /// Can pop if not on the Home tab (index 0).
+  bool get canPop => _index != 0;
 
   /// Records a tab change. Returns `false` if [index] is already selected.
   bool select(int index) {
-    if (_stack.last == index) return false;
-    _stack.add(index);
+    if (_index == index) return false;
+    _index = index;
     return true;
   }
 
+  /// Returns to Home tab (index 0).
   bool pop() {
     if (!canPop) return false;
-    _stack.removeLast();
+    _index = 0;
     return true;
   }
 }
@@ -96,10 +98,37 @@ class TabHistoryPopScope extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !history.canPop,
+      canPop: !history.canPop || AppNavigation.canPop(context),
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (history.pop()) onChanged();
+      },
+      child: child,
+    );
+  }
+}
+
+/// Intercepts Android back button for top-level routes that act as tabs.
+class RootTabPopScope extends StatelessWidget {
+  const RootTabPopScope({
+    super.key,
+    required this.isHome,
+    required this.homeRoute,
+    required this.child,
+  });
+
+  final bool isHome;
+  final String homeRoute;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: isHome || AppNavigation.canPop(context),
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        // Use go() to switch back to home without adding to stack
+        context.go(homeRoute);
       },
       child: child,
     );

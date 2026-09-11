@@ -13,6 +13,7 @@ class TransactionModel {
   final String status; // unsettled | settled | pending | failed
   final DateTime createdAt;
   final DateTime? settledAt;
+  final List<String> hiddenBy;
 
   const TransactionModel({
     required this.txId,
@@ -26,6 +27,7 @@ class TransactionModel {
     required this.status,
     required this.createdAt,
     this.settledAt,
+    this.hiddenBy = const [],
   });
 
   bool get isUnsettled => status.toLowerCase() == 'unsettled' || status.toLowerCase() == 'pending';
@@ -47,6 +49,7 @@ class TransactionModel {
     settledAt: map['settledAt'] is Timestamp
         ? (map['settledAt'] as Timestamp).toDate()
         : DateTime.tryParse(map['settledAt']?.toString() ?? ''),
+    hiddenBy: List<String>.from(map['hiddenBy'] ?? []),
   );
 
   Map<String, dynamic> toMap() => {
@@ -60,6 +63,7 @@ class TransactionModel {
     'status': status,
     'createdAt': FieldValue.serverTimestamp(),
     if (settledAt != null) 'settledAt': Timestamp.fromDate(settledAt!),
+    'hiddenBy': hiddenBy,
   };
 }
 

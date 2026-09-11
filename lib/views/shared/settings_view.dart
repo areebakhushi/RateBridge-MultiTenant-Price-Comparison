@@ -36,27 +36,6 @@ class SettingsView extends StatelessWidget {
                 children: [
                   ListTile(
                     title: Text(
-                      'Language Dialect',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.navy,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Urdu / English',
-                      style: GoogleFonts.plusJakartaSans(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    trailing: Switch(
-                      value: true,
-                      activeThumbColor: AppColors.amber,
-                      onChanged: (b) {},
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    title: Text(
                       'Device Biometrics',
                       style: GoogleFonts.plusJakartaSans(
                         fontWeight: FontWeight.w600,

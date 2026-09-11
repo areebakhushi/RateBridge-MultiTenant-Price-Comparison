@@ -32,6 +32,9 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
   _OrdersTab _selectedTab = _OrdersTab.pending;
   bool _ordersWatching = false;
 
+  bool _isSelectionMode = false;
+  final Set<String> _selectedOrderIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +50,11 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
     }
     final nextTab = _OrdersTab.values[requestedSubTab];
     if (nextTab == _selectedTab) return;
-    setState(() => _selectedTab = nextTab);
+    setState(() {
+      _selectedTab = nextTab;
+      _isSelectionMode = false;
+      _selectedOrderIds.clear();
+    });
   }
 
   void _bootstrap() {
@@ -72,10 +79,32 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
   }
 
   void _openDetail(OrderModel order) {
+    if (_isSelectionMode) {
+      _toggleSelection(order.orderId);
+      return;
+    }
     context.push(
       RouteNames.fieldOrderDetail.replaceFirst(':orderId', order.orderId),
       extra: order,
     );
+  }
+
+  void _toggleSelection(String orderId) {
+    setState(() {
+      if (_selectedOrderIds.contains(orderId)) {
+        _selectedOrderIds.remove(orderId);
+        if (_selectedOrderIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedOrderIds.add(orderId);
+      }
+    });
+  }
+
+  void _enterSelectionMode(String orderId) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedOrderIds.add(orderId);
+    });
   }
 
   void _openMarketplace() {
@@ -103,6 +132,51 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
   int _countForTab(FieldOrdersViewModel vm, _OrdersTab tab) =>
       _ordersForTab(vm, tab).length;
 
+  Future<void> _confirmAndDeleteSelected() async {
+    if (_selectedOrderIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${_selectedOrderIds.length} orders?'),
+        content: const Text('This will remove these orders from your history. The underlying records will remain for other participants.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final session = context.read<FieldSessionViewModel>();
+      final uid = session.user?.uid;
+      if (uid == null) return;
+
+      try {
+        await context.read<FieldOrdersViewModel>().hideOrders(
+              _selectedOrderIds.toList(),
+              uid,
+            );
+        setState(() {
+          _selectedOrderIds.clear();
+          _isSelectionMode = false;
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove orders: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<FieldOrdersViewModel>();
@@ -128,14 +202,43 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
           backgroundColor: _appBarNavy,
           foregroundColor: Colors.white,
           automaticallyImplyLeading: false,
-          leading: AppNavigation.leading(context, color: Colors.white),
-          title: Text(
-            'My Orders',
-            style: FieldTypography.titleMedium.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          leading: _isSelectionMode
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () {
+                    setState(() {
+                      _isSelectionMode = false;
+                      _selectedOrderIds.clear();
+                    });
+                  },
+                )
+              : AppNavigation.leading(context, color: Colors.white),
+          title: _isSelectionMode
+              ? Text('${_selectedOrderIds.length} selected')
+              : Text(
+                  'My Orders',
+                  style: FieldTypography.titleMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+          actions: _isSelectionMode
+              ? [
+                  IconButton(
+                    icon: const Icon(Icons.select_all_rounded),
+                    onPressed: () {
+                      setState(() {
+                        final currentOrders = _ordersForTab(vm, _selectedTab);
+                        _selectedOrderIds.addAll(currentOrders.map((o) => o.orderId));
+                      });
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: _confirmAndDeleteSelected,
+                  ),
+                ]
+              : null,
         ),
         body: vm.errorMessage != null && vm.orders.isEmpty
             ? FieldErrorState(
@@ -158,7 +261,13 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
                           _countForTab(vm, _OrdersTab.delivered),
                       _OrdersTab.history: _countForTab(vm, _OrdersTab.history),
                     },
-                    onSelected: (tab) => setState(() => _selectedTab = tab),
+                    onSelected: (tab) {
+                      setState(() {
+                        _selectedTab = tab;
+                        _isSelectionMode = false;
+                        _selectedOrderIds.clear();
+                      });
+                    },
                   ),
                   Expanded(
                     child: vm.isLoadingOrders && vm.orders.isEmpty
@@ -167,8 +276,11 @@ class _FieldOrdersViewState extends State<FieldOrdersView> {
                             key: ValueKey(_selectedTab),
                             orders: _ordersForTab(vm, _selectedTab),
                             tab: _selectedTab,
+                            isSelectionMode: _isSelectionMode,
+                            selectedOrderIds: _selectedOrderIds,
                             onRefresh: _refresh,
                             onOrderTap: _openDetail,
+                            onOrderLongPress: _enterSelectionMode,
                             onBrowse: _openMarketplace,
                           ),
                   ),
@@ -297,16 +409,22 @@ class _DarazTabItem extends StatelessWidget {
 class _OrdersTabList extends StatelessWidget {
   final List<OrderModel> orders;
   final _OrdersTab tab;
+  final bool isSelectionMode;
+  final Set<String> selectedOrderIds;
   final Future<void> Function() onRefresh;
   final ValueChanged<OrderModel> onOrderTap;
+  final ValueChanged<String> onOrderLongPress;
   final VoidCallback onBrowse;
 
   const _OrdersTabList({
     super.key,
     required this.orders,
     required this.tab,
+    required this.isSelectionMode,
+    required this.selectedOrderIds,
     required this.onRefresh,
     required this.onOrderTap,
+    required this.onOrderLongPress,
     required this.onBrowse,
   });
 
@@ -327,9 +445,14 @@ class _OrdersTabList extends StatelessWidget {
         itemCount: orders.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
+          final order = orders[index];
+          final isSelected = selectedOrderIds.contains(order.orderId);
           return _OrderCard(
-            order: orders[index],
-            onViewDetails: () => onOrderTap(orders[index]),
+            order: order,
+            isSelected: isSelected,
+            isSelectionMode: isSelectionMode,
+            onViewDetails: () => onOrderTap(order),
+            onLongPress: () => onOrderLongPress(order.orderId),
           );
         },
       ),
@@ -423,11 +546,17 @@ class _TabEmptyState extends StatelessWidget {
 
 class _OrderCard extends StatelessWidget {
   final OrderModel order;
+  final bool isSelected;
+  final bool isSelectionMode;
   final VoidCallback onViewDetails;
+  final VoidCallback onLongPress;
 
   const _OrderCard({
     required this.order,
+    this.isSelected = false,
+    this.isSelectionMode = false,
     required this.onViewDetails,
+    required this.onLongPress,
   });
 
   String get _shortOrderId {
@@ -463,114 +592,135 @@ class _OrderCard extends StatelessWidget {
         ? dateFmt.format(order.requiredDate!)
         : 'Not set';
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: FieldColors.borderSubtle),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                _shortOrderId,
-                style: FieldTypography.labelSmall.copyWith(
-                  fontSize: 11,
-                  color: FieldColors.textSecondary,
-                ),
-              ),
-              const Spacer(),
-              _DarazStatusBadge(status: order.status),
-            ],
+    return GestureDetector(
+      onLongPress: onLongPress,
+      onTap: onViewDetails,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isSelected ? FieldColors.accentAmber.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? FieldColors.accentAmber : FieldColors.borderSubtle,
+            width: isSelected ? 1.5 : 1,
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: FieldColors.primaryNavy.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  fieldMaterialCategoryIcon(_guessCategory(order.materialName)),
-                  size: 20,
-                  color: FieldColors.primaryNavy,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.materialName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FieldTypography.titleMedium.copyWith(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: FieldColors.primaryNavy,
-                      ),
+        ),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                if (isSelectionMode) ...[
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => onViewDetails(),
+                      activeColor: FieldColors.accentAmber,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      order.supplierName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FieldTypography.bodyMedium.copyWith(
-                        fontSize: 12,
-                        color: FieldColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_formatQty(order.quantity)} ${order.unit}',
-                      style: FieldTypography.bodyMedium.copyWith(
-                        fontSize: 12,
-                        color: FieldColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                  _shortOrderId,
+                  style: FieldTypography.labelSmall.copyWith(
+                    fontSize: 11,
+                    color: FieldColors.textSecondary,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                CurrencyFormatter.formatPKR(order.totalAmount),
-                style: FieldTypography.titleMedium.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: FieldColors.accentAmber,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '📍 ${order.deliveryAddress}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: FieldTypography.bodyMedium.copyWith(
-              fontSize: 11,
-              color: FieldColors.textSecondary,
+                const Spacer(),
+                if (!isSelectionMode) _DarazStatusBadge(status: order.status),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '📅 Required: $requiredLabel',
-            style: FieldTypography.bodyMedium.copyWith(
-              fontSize: 11,
-              color: FieldColors.textSecondary,
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: FieldColors.primaryNavy.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    fieldMaterialCategoryIcon(_guessCategory(order.materialName)),
+                    size: 20,
+                    color: FieldColors.primaryNavy,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.materialName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: FieldTypography.titleMedium.copyWith(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: FieldColors.primaryNavy,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        order.supplierName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: FieldTypography.bodyMedium.copyWith(
+                          fontSize: 12,
+                          color: FieldColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${_formatQty(order.quantity)} ${order.unit}',
+                        style: FieldTypography.bodyMedium.copyWith(
+                          fontSize: 12,
+                          color: FieldColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  CurrencyFormatter.formatPKR(order.totalAmount),
+                  style: FieldTypography.titleMedium.copyWith(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: FieldColors.accentAmber,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          _OrderActionRow(order: order, onViewDetails: onViewDetails),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              '📍 ${order.deliveryAddress}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FieldTypography.bodyMedium.copyWith(
+                fontSize: 11,
+                color: FieldColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '📅 Required: $requiredLabel',
+              style: FieldTypography.bodyMedium.copyWith(
+                fontSize: 11,
+                color: FieldColors.textSecondary,
+              ),
+            ),
+            if (!isSelectionMode) ...[
+              const SizedBox(height: 12),
+              _OrderActionRow(order: order, onViewDetails: onViewDetails),
+            ],
+          ],
+        ),
       ),
     );
   }

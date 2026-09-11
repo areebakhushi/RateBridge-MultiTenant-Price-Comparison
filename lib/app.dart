@@ -30,6 +30,7 @@ import 'views/auth/status_screens.dart';
 import 'theme/ceo_theme.dart';
 import 'views/ceo/ceo_dashboard_view.dart';
 import 'views/ceo/ceo_pending_view.dart';
+import 'views/ceo/ceo_appeal_view.dart';
 import 'views/ceo/ceo_invite_hub_view.dart';
 import 'views/ceo/ceo_supplier_marketplace_view.dart';
 import 'views/ceo/ceo_join_requests_view.dart';
@@ -101,6 +102,7 @@ import 'views/admin/admin_payment_queue_view.dart';
 import 'views/admin/admin_subscription_view.dart';
 import 'views/admin/admin_dispute_list_view.dart';
 import 'views/admin/admin_audit_log_view.dart';
+import 'views/admin/admin_appeals_view.dart';
 
 class RateBridgeApp extends StatefulWidget {
   const RateBridgeApp({super.key});
@@ -182,6 +184,10 @@ class _RateBridgeAppState extends State<RateBridgeApp> {
         GoRoute(
           path: RouteNames.ceoPending,
           builder: (context, state) => CeoTheme.wrap(const CeoPendingView()),
+        ),
+        GoRoute(
+          path: RouteNames.ceoAppeal,
+          builder: (context, state) => CeoTheme.wrap(const CeoAppealView()),
         ),
         GoRoute(
           path: RouteNames.ceoInvite,
@@ -694,6 +700,10 @@ class _RateBridgeAppState extends State<RateBridgeApp> {
           builder:
               (context, state) => AdminTheme.wrap(const AdminAuditLogView()),
         ),
+        GoRoute(
+          path: '/admin/appeals',
+          builder: (context, state) => AdminTheme.wrap(const AdminAppealsView()),
+        ),
       ],
       redirect: (context, state) {
         final authVM = Provider.of<AuthViewModel>(context, listen: false);
@@ -736,7 +746,8 @@ class _RateBridgeAppState extends State<RateBridgeApp> {
           if (path != RouteNames.rejected &&
               path != RouteNames.ceoPending &&
               path != RouteNames.supplierPending &&
-              path != RouteNames.supplierAppeal) {
+              path != RouteNames.supplierAppeal &&
+              path != RouteNames.ceoAppeal) {
             if (role == 'ceo') return RouteNames.ceoPending;
             if (role == 'supplier') return RouteNames.supplierPending;
             return RouteNames.rejected;

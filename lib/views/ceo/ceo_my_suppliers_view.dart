@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../constants/route_names.dart';
 import '../../theme/ceo_theme.dart';
+import '../../utils/app_navigation.dart';
 import '../../viewmodels/ceo_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../widgets/ceo_nav_bar.dart';
@@ -75,7 +77,10 @@ class _CeoMySuppliersViewState extends State<CeoMySuppliersView>
     final companyId =
         context.read<AuthViewModel>().user?.companyId ?? '';
 
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.ceoDashboard,
+      child: Scaffold(
       backgroundColor: CeoColors.screenBg,
       appBar: CeoAppBar(
         title: 'Partner Directory',
@@ -187,6 +192,7 @@ class _CeoMySuppliersViewState extends State<CeoMySuppliersView>
         ],
       ),
       bottomNavigationBar: const CeoNavBar(currentIndex: 1),
+    ),
     );
   }
 

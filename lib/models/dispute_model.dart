@@ -44,6 +44,7 @@ class DisputeModel {
   final String? resolutionNotes;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final List<String> hiddenBy;
 
   DisputeModel({
     required this.id,
@@ -61,6 +62,7 @@ class DisputeModel {
     this.resolutionNotes,
     required this.createdAt,
     required this.updatedAt,
+    this.hiddenBy = const [],
   });
 
   factory DisputeModel.fromMap(String id, Map<String, dynamic> map) {
@@ -95,6 +97,7 @@ class DisputeModel {
       resolutionNotes: (notes == null || notes.isEmpty) ? null : notes,
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt'] ?? map['createdAt']),
+      hiddenBy: List<String>.from(map['hiddenBy'] ?? []),
     );
   }
 
@@ -114,6 +117,7 @@ class DisputeModel {
       'resolutionNotes': resolutionNotes,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'hiddenBy': hiddenBy,
     };
   }
 }

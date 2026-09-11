@@ -13,6 +13,7 @@ import '../../../viewmodels/field_user/field_session_viewmodel.dart';
 import '../../../widgets/chat_attachment_image.dart';
 import '../../../widgets/chat_pending_image_preview.dart';
 import '../widgets/field_async_states.dart';
+
 class FieldChatThreadView extends StatefulWidget {
   final String supplierUid;
   final String supplierName;
@@ -37,6 +38,9 @@ class _FieldChatThreadViewState extends State<FieldChatThreadView>
   int _lastMessageCount = 0;
   String? _supplierPhone;
   PendingChatImage? _pendingImage;
+
+  bool _isSelectionMode = false;
+  final Set<String> _selectedMessageIds = {};
 
   bool get _canSend =>
       _messageController.text.trim().isNotEmpty || _pendingImage != null;
@@ -67,6 +71,7 @@ class _FieldChatThreadViewState extends State<FieldChatThreadView>
   void _onComposerChanged() {
     if (mounted) setState(() {});
   }
+
   Future<void> _openThread() async {
     final session = context.read<FieldSessionViewModel>();
     final uid = session.user?.uid;
@@ -185,11 +190,99 @@ class _FieldChatThreadViewState extends State<FieldChatThreadView>
       );
     }
   }
+
+  void _toggleMessageSelection(String messageId) {
+    setState(() {
+      if (_selectedMessageIds.contains(messageId)) {
+        _selectedMessageIds.remove(messageId);
+        if (_selectedMessageIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedMessageIds.add(messageId);
+      }
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected(String userId) async {
+    if (_selectedMessageIds.isEmpty) return;
+
+    final vm = context.read<FieldChatViewModel>();
+    final selectedMessages = vm.messages.where((m) => _selectedMessageIds.contains(m.id)).toList();
+    
+    if (selectedMessages.isEmpty) {
+      setState(() {
+        _selectedMessageIds.clear();
+        _isSelectionMode = false;
+      });
+      return;
+    }
+
+    // Logic: "Delete for Everyone" is available only if ALL selected messages were sent by ME.
+    final allSentByMe = selectedMessages.every((m) => m.senderId == userId && userId.isNotEmpty);
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Delete ${selectedMessages.length} message(s)?'),
+        children: [
+          if (allSentByMe)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'everyone'),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Delete for everyone', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'me'),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Delete for me'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (action == null || action == 'cancel' || !mounted) return;
+
+    final companyId = context.read<FieldSessionViewModel>().companyId!;
+    final chatId = FieldChatViewModel.chatIdFor(
+      companyId: companyId,
+      fieldUserId: userId,
+      supplierId: widget.supplierUid,
+    );
+
+    try {
+      if (action == 'me') {
+        await vm.deleteMessagesForMe(chatId, _selectedMessageIds.toList(), userId);
+      } else if (action == 'everyone') {
+        await vm.deleteMessagesForEveryone(chatId, _selectedMessageIds.toList());
+      }
+      setState(() {
+        _selectedMessageIds.clear();
+        _isSelectionMode = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete messages: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<FieldChatViewModel>();
-    final currentUid =
-        context.watch<FieldSessionViewModel>().user?.uid ?? '';
+    final session = context.watch<FieldSessionViewModel>();
+    final currentUid = session.user?.uid ?? '';
 
     if (vm.messages.length != _lastMessageCount) {
       final wasEmpty = _lastMessageCount == 0;
@@ -205,33 +298,51 @@ class _FieldChatThreadViewState extends State<FieldChatThreadView>
         resizeToAvoidBottomInset: true,
         backgroundColor: FieldColors.screenBackground,
         appBar: FieldAppBar(
-          titleWidget: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.supplierName,
-                style: FieldTypography.titleMedium.copyWith(
-                  color: FieldColors.surfaceWhite,
-                  fontSize: 16,
+          leading: _isSelectionMode
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => setState(() {
+                    _isSelectionMode = false;
+                    _selectedMessageIds.clear();
+                  }),
+                )
+              : null,
+          titleWidget: _isSelectionMode
+              ? Text('${_selectedMessageIds.length} selected')
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.supplierName,
+                      style: FieldTypography.titleMedium.copyWith(
+                        color: FieldColors.surfaceWhite,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (widget.orderId != null)
+                      Text(
+                        'Order #${widget.orderId}',
+                        style: FieldTypography.labelSmall.copyWith(
+                          color: FieldColors.surfaceWhite.withValues(alpha: 0.75),
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
                 ),
-              ),
-              if (widget.orderId != null)
-                Text(
-                  'Order #${widget.orderId}',
-                  style: FieldTypography.labelSmall.copyWith(
-                    color: FieldColors.surfaceWhite.withValues(alpha: 0.75),
-                    fontSize: 12,
+          actions: _isSelectionMode
+              ? [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: () => _confirmAndDeleteSelected(currentUid),
                   ),
-                ),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.phone_outlined),
-              tooltip: 'Call supplier',
-              onPressed: _callSupplier,
-            ),
-          ],
+                ]
+              : [
+                  IconButton(
+                    icon: const Icon(Icons.phone_outlined),
+                    tooltip: 'Call supplier',
+                    onPressed: _callSupplier,
+                  ),
+                ],
         ),
         body: vm.errorMessage != null && vm.messages.isEmpty
             ? FieldErrorState(
@@ -256,21 +367,39 @@ class _FieldChatThreadViewState extends State<FieldChatThreadView>
                           return _MessageGroupBubble(
                             group: groups[index],
                             currentUid: currentUid,
+                            isSelectionMode: _isSelectionMode,
+                            selectedIds: _selectedMessageIds,
+                            onMessageTap: (id) {
+                              if (_isSelectionMode) {
+                                _toggleMessageSelection(id);
+                              }
+                            },
+                            onMessageLongPress: (id) {
+                              final msg = vm.messages.firstWhere((m) => m.id == id);
+                              if (!_isSelectionMode && !msg.isDeletedForEveryone) {
+                                setState(() {
+                                  _isSelectionMode = true;
+                                  _selectedMessageIds.add(id);
+                                });
+                              }
+                            },
                           );
                         },
                       ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: _MessageInputBar(
-            controller: _messageController,
-            isSending: vm.isSending,
-            canSend: _canSend,
-            pendingImage: _pendingImage,
-            onAttach: _pickImage,
-            onRemoveImage: _removePendingImage,
-            onSend: _send,
-          ),
-        ),
+        bottomNavigationBar: _isSelectionMode
+            ? null
+            : SafeArea(
+                top: false,
+                child: _MessageInputBar(
+                  controller: _messageController,
+                  isSending: vm.isSending,
+                  canSend: _canSend,
+                  pendingImage: _pendingImage,
+                  onAttach: _pickImage,
+                  onRemoveImage: _removePendingImage,
+                  onSend: _send,
+                ),
+              ),
       ),
     );
   }
@@ -325,10 +454,18 @@ class _MessageGroup {
 class _MessageGroupBubble extends StatelessWidget {
   final _MessageGroup group;
   final String currentUid;
+  final bool isSelectionMode;
+  final Set<String> selectedIds;
+  final ValueChanged<String> onMessageTap;
+  final ValueChanged<String> onMessageLongPress;
 
   const _MessageGroupBubble({
     required this.group,
     required this.currentUid,
+    required this.isSelectionMode,
+    required this.selectedIds,
+    required this.onMessageTap,
+    required this.onMessageLongPress,
   });
 
   @override
@@ -347,6 +484,10 @@ class _MessageGroupBubble extends StatelessWidget {
               child: _ChatBubble(
                 message: msg,
                 isSelf: msg.senderId == currentUid,
+                isSelected: selectedIds.contains(msg.id),
+                isSelectionMode: isSelectionMode,
+                onTap: () => onMessageTap(msg.id),
+                onLongPress: () => onMessageLongPress(msg.id),
               ),
             ),
           ),
@@ -369,55 +510,127 @@ class _MessageGroupBubble extends StatelessWidget {
 class _ChatBubble extends StatelessWidget {
   final ChatMessageModel message;
   final bool isSelf;
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
-  const _ChatBubble({required this.message, required this.isSelf});
+  const _ChatBubble({
+    required this.message,
+    required this.isSelf,
+    required this.isSelected,
+    required this.isSelectionMode,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (message.isDeletedForEveryone) {
+      return _buildDeletedBubble();
+    }
+
     final hasText = message.content.trim().isNotEmpty;
     final hasImage =
         message.attachmentUrl != null && message.attachmentUrl!.isNotEmpty;
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (isSelectionMode && !isSelf) ...[
+            Checkbox(
+              value: isSelected,
+              onChanged: (_) => onTap(),
+              activeColor: FieldColors.accentAmber,
+            ),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.sizeOf(context).width * 0.72,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? (isSelf ? FieldColors.primaryNavy.withValues(alpha: 0.8) : FieldColors.accentAmber.withValues(alpha: 0.2))
+                      : (isSelf ? FieldColors.primaryNavy : FieldColors.chatBubbleReceived),
+                  borderRadius: BorderRadius.circular(12),
+                  border: isSelected && !isSelf ? Border.all(color: FieldColors.accentAmber) : null,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hasImage && !hasText ? FieldSpacing.xs : FieldSpacing.sm + 2,
+                    vertical: FieldSpacing.sm,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasImage)
+                        ChatAttachmentImage(
+                          imageUrl: message.attachmentUrl!,
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => ChatImageUtils.showFullscreen(
+                            context,
+                            imageUrl: message.attachmentUrl,
+                          ),
+                        ),
+                      if (hasImage && hasText) const SizedBox(height: FieldSpacing.sm),
+                      if (hasText)
+                        Text(
+                          message.content,
+                          style: FieldTypography.bodyLarge.copyWith(
+                            fontSize: 14,
+                            color: isSelf
+                                ? FieldColors.surfaceWhite
+                                : FieldColors.textPrimary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (isSelectionMode && isSelf) ...[
+            const SizedBox(width: 4),
+            Checkbox(
+              value: isSelected,
+              onChanged: (_) => onTap(),
+              activeColor: FieldColors.accentAmber,
+            ),
+          ],
+        ],
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isSelf ? FieldColors.primaryNavy : FieldColors.chatBubbleReceived,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: hasImage && !hasText ? FieldSpacing.xs : FieldSpacing.sm + 2,
-            vertical: FieldSpacing.sm,
+    );
+  }
+
+  Widget _buildDeletedBubble() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: FieldColors.chatBubbleReceived.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FieldColors.borderSubtle),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.block_flipped, size: 14, color: FieldColors.textMuted),
+          const SizedBox(width: 6),
+          Text(
+            'This message was deleted',
+            style: FieldTypography.bodyMedium.copyWith(
+              color: FieldColors.textMuted,
+              fontStyle: FontStyle.italic,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (hasImage)
-                ChatAttachmentImage(
-                  imageUrl: message.attachmentUrl!,
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => ChatImageUtils.showFullscreen(
-                    context,
-                    imageUrl: message.attachmentUrl,
-                  ),
-                ),
-              if (hasImage && hasText) const SizedBox(height: FieldSpacing.sm),
-              if (hasText)
-                Text(
-                  message.content,
-                  style: FieldTypography.bodyLarge.copyWith(
-                    fontSize: 14,
-                    color: isSelf
-                        ? FieldColors.surfaceWhite
-                        : FieldColors.textPrimary,
-                  ),
-                ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }

@@ -10,6 +10,7 @@ import '../../models/material_model.dart';
 import '../../models/order_model.dart';
 import '../../models/rating_model.dart';
 import '../../theme/supplier_theme.dart';
+import '../../utils/app_navigation.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/currency_formatter.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -264,7 +265,10 @@ class _SupplierDashboardViewState extends State<SupplierDashboardView> {
         viewModel.companies.isEmpty;
     final waitingForCompanies = !viewModel.companiesLoaded;
 
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: true,
+      homeRoute: RouteNames.supplierDashboard,
+      child: Scaffold(
       backgroundColor: FieldColors.screenBackground,
       bottomNavigationBar: const SupplierNavBar(currentIndex: 0),
       body: RefreshIndicator(
@@ -513,6 +517,7 @@ class _SupplierDashboardViewState extends State<SupplierDashboardView> {
                     ),
                   ),
                 ),
+      ),
     );
   }
 }
@@ -1771,7 +1776,10 @@ class _RfqBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return RootTabPopScope(
+      isHome: true,
+      homeRoute: RouteNames.supplierDashboard,
+      child: Material(
       color: FieldColors.surfaceWhite,
       elevation: 0,
       clipBehavior: Clip.antiAlias,
@@ -1790,6 +1798,7 @@ class _RfqBanner extends StatelessWidget {
         trailing: const Icon(Icons.arrow_forward_ios, size: 14),
         onTap: onTap,
       ),
+    ),
     );
   }
 }

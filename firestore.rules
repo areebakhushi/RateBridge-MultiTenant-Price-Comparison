@@ -132,6 +132,16 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Appeals collection rules
+    match /appeals/{appealId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && (currentRole() == 'supplier' || currentRole() == 'ceo')
+        && request.resource.data.status == 'pending';
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
     // RFQ create jobs. Clients write a pending payload; Cloud Functions
     // create the RFQ with the Admin SDK. Avoids callable HTTP 403 on web.
     match /rfq_jobs/{jobId} {
@@ -301,7 +311,8 @@ service cloud.firestore {
         && collection != 'rfq_cancel_jobs'
         && collection != 'rfq_bid_withdraw_jobs'
         && collection != 'dispute_withdraw_jobs'
-        && collection != 'commission_ensure_jobs';
+        && collection != 'commission_ensure_jobs'
+        && collection != 'appeals';
     }
   }
 }

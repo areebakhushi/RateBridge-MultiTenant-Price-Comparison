@@ -26,10 +26,12 @@ class RouteNames {
   static const String adminDisputes = '/admin/disputes';
   static const String adminAuditLogs = '/admin/audit-logs';
   static const String adminNotifications = '/admin/notifications';
+  static const String adminAppeals = '/admin/appeals';
 
   // CEO
   static const String ceoDashboard = '/ceo/dashboard';
   static const String ceoPending = '/ceo/pending';
+  static const String ceoAppeal = '/ceo/appeal';
   static const String ceoMarketplace = '/ceo/marketplace';
   static const String ceoJoinRequests = '/ceo/join-requests';
   static const String ceoInvite = '/ceo/invite';

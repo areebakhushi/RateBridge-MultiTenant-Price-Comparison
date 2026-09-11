@@ -225,7 +225,10 @@ class _CeoCompanyProfileViewState extends State<CeoCompanyProfileView> {
         ? user!.profileImageUrl
         : company.logoUrl;
 
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.ceoDashboard,
+      child: Scaffold(
       backgroundColor: FieldColors.screenBackground,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -379,6 +382,7 @@ class _CeoCompanyProfileViewState extends State<CeoCompanyProfileView> {
         },
       ),
       bottomNavigationBar: const CeoNavBar(currentIndex: 5),
+    ),
     );
   }
 }

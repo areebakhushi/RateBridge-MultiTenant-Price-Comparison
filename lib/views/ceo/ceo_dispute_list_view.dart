@@ -13,27 +13,109 @@ import '../../viewmodels/ceo_viewmodel.dart';
 import '../../viewmodels/dispute_viewmodel.dart';
 import '../../widgets/ceo/ceo_widgets.dart';
 
-class CeoDisputeListView extends StatelessWidget {
+class CeoDisputeListView extends StatefulWidget {
   const CeoDisputeListView({super.key});
 
   @override
+  State<CeoDisputeListView> createState() => _CeoDisputeListViewState();
+}
+
+class _CeoDisputeListViewState extends State<CeoDisputeListView> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedDisputeIds = {};
+
+  void _toggleSelection(String disputeId) {
+    setState(() {
+      if (_selectedDisputeIds.contains(disputeId)) {
+        _selectedDisputeIds.remove(disputeId);
+        if (_selectedDisputeIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedDisputeIds.add(disputeId);
+      }
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected(String userId) async {
+    if (_selectedDisputeIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedDisputeIds.length} issues?'),
+        content: const Text('These issues will be removed from your view. They will still be visible to the Admin and other parties.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await context.read<DisputeViewModel>().deleteDisputesForMe(
+              _selectedDisputeIds.toList(),
+              userId,
+            );
+        setState(() {
+          _selectedDisputeIds.clear();
+          _isSelectionMode = false;
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthViewModel>();
     final companyId =
         context.watch<CeoViewModel>().company?.id ??
-        context.watch<AuthViewModel>().user?.companyId ??
+        auth.user?.companyId ??
         '';
+    final userId = auth.user?.uid ?? '';
     final disputeVM = context.read<DisputeViewModel>();
 
     return Scaffold(
       backgroundColor: CeoColors.screenBg,
-      appBar: const CeoAppBar(title: 'Reported Issues'),
+      appBar: CeoAppBar(
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() {
+                  _isSelectionMode = false;
+                  _selectedDisputeIds.clear();
+                }),
+              )
+            : null,
+        titleWidget: _isSelectionMode ? Text('${_selectedDisputeIds.length} selected') : null,
+        title: _isSelectionMode ? null : 'Reported Issues',
+        actions: _isSelectionMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  onPressed: () => _confirmAndDeleteSelected(userId),
+                ),
+              ]
+            : null,
+      ),
       body:
           companyId.isEmpty
               ? const Center(
                 child: CircularProgressIndicator(),
               )
               : StreamBuilder<List<DisputeModel>>(
-                stream: disputeVM.watchCompanyDisputes(companyId),
+                stream: disputeVM.watchCompanyDisputes(companyId, userId: userId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -57,10 +139,7 @@ class CeoDisputeListView extends StatelessWidget {
                       ),
                     );
                   }
-                  final disputes =
-                      (snapshot.data ?? [])
-                          .where((dispute) => dispute.companyId == companyId)
-                          .toList();
+                  final disputes = snapshot.data ?? [];
 
                   if (disputes.isEmpty) {
                     return Center(
@@ -98,8 +177,32 @@ class CeoDisputeListView extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     itemCount: disputes.length,
                     itemBuilder:
-                        (context, index) =>
-                            _DisputeCard(dispute: disputes[index]),
+                        (context, index) {
+                          final dispute = disputes[index];
+                          final isSelected = _selectedDisputeIds.contains(dispute.id);
+                          return _DisputeCard(
+                            dispute: dispute,
+                            isSelected: isSelected,
+                            isSelectionMode: _isSelectionMode,
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleSelection(dispute.id);
+                              } else {
+                                context.push(
+                                  RouteNames.ceoDisputeDetail.replaceFirst(':disputeId', dispute.id),
+                                );
+                              }
+                            },
+                            onLongPress: () {
+                              if (!_isSelectionMode) {
+                                setState(() {
+                                  _isSelectionMode = true;
+                                  _selectedDisputeIds.add(dispute.id);
+                                });
+                              }
+                            },
+                          );
+                        },
                   );
                 },
               ),
@@ -109,7 +212,18 @@ class CeoDisputeListView extends StatelessWidget {
 
 class _DisputeCard extends StatelessWidget {
   final DisputeModel dispute;
-  const _DisputeCard({required this.dispute});
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _DisputeCard({
+    required this.dispute,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -117,17 +231,25 @@ class _DisputeCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => context.push(
-          RouteNames.ceoDisputeDetail.replaceFirst(':disputeId', dispute.id),
-        ),
+        onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(16),
         child: AdminCard(
       margin: const EdgeInsets.only(bottom: 12),
+      color: isSelected ? CeoColors.amber.withValues(alpha: 0.1) : Colors.white,
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
+                if (isSelectionMode) ...[
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => onTap(),
+                    activeColor: CeoColors.amber,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -143,26 +265,27 @@ class _DisputeCard extends StatelessWidget {
                     style: CeoTheme.titleStyle(size: 16),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: statusColor.withOpacity(0.2)),
-                  ),
-                  child: Text(
-                    dispute.status.toUpperCase().replaceAll('_', ' '),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+                if (!isSelectionMode)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor.withOpacity(0.2)),
+                    ),
+                    child: Text(
+                      dispute.status.toUpperCase().replaceAll('_', ' '),
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 16),

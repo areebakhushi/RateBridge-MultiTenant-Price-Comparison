@@ -74,7 +74,9 @@ class ChatViewModel extends ChangeNotifier {
 
     _messagesSubscription = _chatRepo.watchThreadMessages(chatId).listen(
       (data) {
-        _messages = data;
+        // Filter messages hidden by current user locally if needed, 
+        // though Firestore queries should ideally handle this.
+        _messages = data.where((m) => !m.hiddenBy.contains(currentUserId)).toList();
         _isLoadingMessages = false;
         notifyListeners();
       },
@@ -132,6 +134,69 @@ class ChatViewModel extends ChangeNotifier {
 
   Future<void> markRead(String chatId, String currentUserId) async {
     await _chatRepo.markMessagesRead(chatId, currentUserId);
+  }
+
+  /// Soft-deletes a message for the current user.
+  Future<void> deleteMessageForMe(String chatId, String messageId, String userId) async {
+    try {
+      await _chatRepo.hideMessageForUser(chatId, messageId, userId);
+      _messages.removeWhere((m) => m.id == messageId);
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// WhatsApp-style: Delete for everyone.
+  Future<void> deleteMessageForEveryone(String chatId, String messageId) async {
+    try {
+      await _chatRepo.deleteMessageForEveryone(chatId, messageId);
+      // No need to manually update local list, stream will handle it.
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Bulk soft-deletes messages for the current user.
+  Future<void> deleteMessagesForMe(String chatId, List<String> messageIds, String userId) async {
+    try {
+      await _chatRepo.hideMessagesForUser(chatId, messageIds, userId);
+      _messages.removeWhere((m) => messageIds.contains(m.id));
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Bulk WhatsApp-style: Delete for everyone.
+  Future<void> deleteMessagesForEveryone(String chatId, List<String> messageIds) async {
+    try {
+      await _chatRepo.deleteMessagesForEveryone(chatId, messageIds);
+      // Stream will handle the local updates.
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Hides a conversation thread from the user's view.
+  Future<void> hideConversation(String chatId, String userId) async {
+    try {
+      await _chatRepo.hideThreadForUser(chatId, userId);
+      _threads.removeWhere((t) => t.chatId == chatId);
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
   }
 
   void stopListening() {

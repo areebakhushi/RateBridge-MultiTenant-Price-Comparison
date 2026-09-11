@@ -129,6 +129,43 @@ class NotificationViewModel extends ChangeNotifier {
     }
   }
 
+  /// Deletes a specific notification.
+  Future<void> deleteNotification(String notifId) async {
+    try {
+      await _notificationRepo.deleteNotification(notifId);
+    } catch (e) {
+      developer.log('NOTIFICATION DELETE ERROR: $e');
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Deletes multiple notifications.
+  Future<void> deleteNotifications(List<String> notifIds) async {
+    try {
+      await _notificationRepo.deleteNotifications(notifIds);
+    } catch (e) {
+      developer.log('NOTIFICATIONS BULK DELETE ERROR: $e');
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Deletes all notifications for the current user.
+  Future<void> deleteAllNotifications() async {
+    if (_uid == null) return;
+    try {
+      await _notificationRepo.deleteAllNotifications(_uid!);
+    } catch (e) {
+      developer.log('NOTIFICATIONS CLEAR ALL ERROR: $e');
+      _errorMessage = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   @override
   void dispose() {
     _stopListening();

@@ -1835,4 +1835,22 @@ class FirestoreService {
           return logs.where((log) => matches.contains(log.actionType)).toList();
         });
   }
+
+  /// Soft-delete: Hide RFQ for current user
+  Future<void> hideRfqForUser(String rfqId, String userId) async {
+    await _db.collection('rfqs').doc(rfqId).update({
+      'hiddenBy': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  /// Bulk soft-delete RFQs
+  Future<void> hideRfqsForUser(List<String> rfqIds, String userId) async {
+    final batch = _db.batch();
+    for (final id in rfqIds) {
+      batch.update(_db.collection('rfqs').doc(id), {
+        'hiddenBy': FieldValue.arrayUnion([userId]),
+      });
+    }
+    await batch.commit();
+  }
 }

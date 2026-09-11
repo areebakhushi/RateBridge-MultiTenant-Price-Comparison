@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../utils/app_navigation.dart';
 import '../../utils/notification_utils.dart';
 import '../../utils/phone_launcher_utils.dart';
 import '../../viewmodels/auth_viewmodel.dart';
@@ -37,6 +38,9 @@ class _SupplierOrdersViewState extends State<SupplierOrdersView>
     'Rejected',
   ];
 
+  bool _isSelectionMode = false;
+  final Set<String> _selectedOrderIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +50,7 @@ class _SupplierOrdersViewState extends State<SupplierOrdersView>
       vsync: this,
       initialIndex: initialTab,
     );
+    _tabController.addListener(_handleTabChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final vm = context.read<SupplierViewModel>();
       final companyId = vm.selectedCompanyId;
@@ -55,55 +60,143 @@ class _SupplierOrdersViewState extends State<SupplierOrdersView>
     });
   }
 
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging && _isSelectionMode) {
+      setState(() {
+        _isSelectionMode = false;
+        _selectedOrderIds.clear();
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChange);
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmAndDeleteSelected(SupplierViewModel viewModel) async {
+    if (_selectedOrderIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedOrderIds.length} orders?'),
+        content: const Text('This will remove these orders from your history. They will remain available for the other participants.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete for Me', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await viewModel.hideOrders(_selectedOrderIds.toList());
+        setState(() {
+          _selectedOrderIds.clear();
+          _isSelectionMode = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Orders removed from your history.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove orders: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final viewModel = Provider.of<SupplierViewModel>(context);
 
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.supplierDashboard,
+      child: Scaffold(
       backgroundColor: FieldColors.screenBackground,
       appBar: SupplierAppBar(
-        title: 'Orders',
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() {
+                  _isSelectionMode = false;
+                  _selectedOrderIds.clear();
+                }),
+              )
+            : null,
+        title: _isSelectionMode ? '${_selectedOrderIds.length} selected' : 'Orders',
+        actions: _isSelectionMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.select_all_rounded),
+                  tooltip: 'Select All',
+                  onPressed: () {
+                    setState(() {
+                      final currentTabLabel = _tabs[_tabController.index];
+                      final currentOrders = _getOrdersForTab(viewModel, currentTabLabel);
+                      _selectedOrderIds.addAll(currentOrders.map((o) => o.orderId));
+                    });
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  tooltip: 'Delete for Me',
+                  onPressed: () => _confirmAndDeleteSelected(viewModel),
+                ),
+              ]
+            : null,
         bottom: TabBar(
           controller: _tabController,
           isScrollable: true,
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
-      bottomNavigationBar: const SupplierNavBar(currentIndex: 2),
+      bottomNavigationBar: _isSelectionMode ? null : const SupplierNavBar(currentIndex: 2),
       body: TabBarView(
         controller: _tabController,
         children:
             _tabs.map((status) => _buildOrderList(viewModel, status)).toList(),
       ),
+    ),
     );
   }
 
+  List<OrderModel> _getOrdersForTab(SupplierViewModel viewModel, String tab) {
+    return viewModel.orders.where((o) {
+      final status = o.status.toLowerCase().trim();
+      switch (tab) {
+        case 'Pending':
+          return status == 'pending' || status == 'pending_approval';
+        case 'Accepted':
+          return status == 'accepted' || status == 'inprogress';
+        case 'Delivered':
+          return status == 'delivered';
+        case 'Confirmed':
+          return status == 'confirmed';
+        case 'Rejected':
+          return status == 'rejected' || status == 'cancelled';
+        default:
+          return false;
+      }
+    }).toList();
+  }
+
   Widget _buildOrderList(SupplierViewModel viewModel, String tab) {
-    final filteredOrders =
-        viewModel.orders.where((o) {
-          final status = o.status.toLowerCase().trim();
-          switch (tab) {
-            case 'Pending':
-              // Inclusion of pending_approval to catch orders awaiting action
-              return status == 'pending' || status == 'pending_approval';
-            case 'Accepted':
-              return status == 'accepted' || status == 'inprogress';
-            case 'Delivered':
-              return status == 'delivered';
-            case 'Confirmed':
-              return status == 'confirmed';
-            case 'Rejected':
-              return status == 'rejected' || status == 'cancelled';
-            default:
-              return false;
-          }
-        }).toList();
+    final filteredOrders = _getOrdersForTab(viewModel, tab);
 
     if (viewModel.isLoading && viewModel.orders.isEmpty) {
       return const SupplierListSkeleton(itemCount: 4, itemHeight: 160);
@@ -120,7 +213,8 @@ class _SupplierOrdersViewState extends State<SupplierOrdersView>
         itemCount: filteredOrders.length,
         itemBuilder: (context, index) {
           final order = filteredOrders[index];
-          return _buildOrderCard(viewModel, order, tab);
+          final isSelected = _selectedOrderIds.contains(order.orderId);
+          return _buildOrderCard(viewModel, order, tab, isSelected);
         },
       ),
     );
@@ -162,146 +256,196 @@ class _SupplierOrdersViewState extends State<SupplierOrdersView>
     SupplierViewModel viewModel,
     OrderModel order,
     String tab,
+    bool isSelected,
   ) {
     final netPayout = order.totalAmount * (1 - AppConstants.commissionRate);
+    final isRemovableTab = tab == 'Confirmed' || tab == 'Rejected';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: SupplierTheme.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'ID: #${order.orderId.substring(order.orderId.length > 6 ? order.orderId.length - 6 : 0).toUpperCase()}',
-                      style: AppTextStyles.label.copyWith(letterSpacing: 0.5),
-                    ),
-                    Text(
-                      DateFormat('MMM dd, hh:mm a').format(order.createdAt),
-                      style: AppTextStyles.caption,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(order.materialName, style: AppTextStyles.h3),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.person_outline,
-                      size: 14,
-                      color: FieldColors.textSecondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      order.fieldUserName,
-                      style: AppTextStyles.bodyMuted.copyWith(fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('QUANTITY', style: AppTextStyles.label),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${order.quantity} ${order.unit}',
-                          style: AppTextStyles.body.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('NET PAYOUT', style: AppTextStyles.label),
-                        const SizedBox(height: 4),
-                        Text(
-                          CurrencyFormatter.formatPKR(netPayout),
-                          style: AppTextStyles.h3.copyWith(
-                            color: FieldColors.statusSuccess,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                StatusBadge(
-                  label: order.status.toUpperCase(),
-                  status: order.status,
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => _showOrderDetail(viewModel, order),
-                  child: const Text('DETAILS'),
-                ),
-              ],
-            ),
-          ),
-          if (tab == 'Pending') ...[
-            const Divider(height: 1),
+    return GestureDetector(
+      onLongPress: isRemovableTab ? () {
+        setState(() {
+          _isSelectionMode = true;
+          _selectedOrderIds.add(order.orderId);
+        });
+      } : null,
+      onTap: () {
+        if (_isSelectionMode) {
+          setState(() {
+            if (_selectedOrderIds.contains(order.orderId)) {
+              _selectedOrderIds.remove(order.orderId);
+              if (_selectedOrderIds.isEmpty) _isSelectionMode = false;
+            } else {
+              _selectedOrderIds.add(order.orderId);
+            }
+          });
+        } else {
+          _showOrderDetail(viewModel, order);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: SupplierTheme.cardDecoration(
+          borderColor: isSelected ? FieldColors.accentAmber : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _showRejectDialog(viewModel, order),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: FieldColors.statusDanger),
-                        foregroundColor: FieldColors.statusDanger,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (_isSelectionMode) ...[
+                        SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: Checkbox(
+                            value: isSelected,
+                            onChanged: (val) {
+                              setState(() {
+                                if (val == true) {
+                                  _selectedOrderIds.add(order.orderId);
+                                } else {
+                                  _selectedOrderIds.remove(order.orderId);
+                                  if (_selectedOrderIds.isEmpty) _isSelectionMode = false;
+                                }
+                              });
+                            },
+                            activeColor: FieldColors.accentAmber,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        'ID: #${order.orderId.substring(order.orderId.length > 6 ? order.orderId.length - 6 : 0).toUpperCase()}',
+                        style: AppTextStyles.label.copyWith(letterSpacing: 0.5),
                       ),
-                      child: const Text('REJECT'),
-                    ),
+                      Text(
+                        DateFormat('MMM dd, hh:mm a').format(order.createdAt),
+                        style: AppTextStyles.caption,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _confirmAccept(viewModel, order),
-                      child: const Text('ACCEPT'),
-                    ),
+                  const SizedBox(height: 12),
+                  Text(order.materialName, style: AppTextStyles.h3),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.person_outline,
+                        size: 14,
+                        color: FieldColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        order.fieldUserName,
+                        style: AppTextStyles.bodyMuted.copyWith(fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('QUANTITY', style: AppTextStyles.label),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${order.quantity} ${order.unit}',
+                            style: AppTextStyles.body.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text('NET PAYOUT', style: AppTextStyles.label),
+                          const SizedBox(height: 4),
+                          Text(
+                            CurrencyFormatter.formatPKR(netPayout),
+                            style: AppTextStyles.h3.copyWith(
+                              color: FieldColors.statusSuccess,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ],
-          if (tab == 'Accepted') ...[
             const Divider(height: 1),
             Padding(
-              padding: const EdgeInsets.all(12),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => _confirmDelivered(viewModel, order),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: FieldColors.statusSuccess,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  StatusBadge(
+                    label: order.status.toUpperCase(),
+                    status: order.status,
                   ),
-                  child: const Text('MARK AS DELIVERED'),
-                ),
+                  const Spacer(),
+                  if (!_isSelectionMode)
+                    TextButton(
+                      onPressed: () => _showOrderDetail(viewModel, order),
+                      child: const Text('DETAILS'),
+                    ),
+                ],
               ),
             ),
+            if (!_isSelectionMode) ...[
+              if (tab == 'Pending') ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _showRejectDialog(viewModel, order),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: FieldColors.statusDanger),
+                            foregroundColor: FieldColors.statusDanger,
+                          ),
+                          child: const Text('REJECT'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _confirmAccept(viewModel, order),
+                          child: const Text('ACCEPT'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (tab == 'Accepted') ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _confirmDelivered(viewModel, order),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: FieldColors.statusSuccess,
+                      ),
+                      child: const Text('MARK AS DELIVERED'),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

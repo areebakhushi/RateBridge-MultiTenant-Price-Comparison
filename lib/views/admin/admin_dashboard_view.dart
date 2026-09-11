@@ -273,6 +273,23 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
                                     ),
                                     const SizedBox(height: 16),
                                   ],
+                                  StreamBuilder<QuerySnapshot>(
+                                    stream: FirebaseFirestore.instance.collection('appeals').where('status', isEqualTo: 'pending').snapshots(),
+                                    builder: (context, snapshot) {
+                                      final pendingAppeals = snapshot.data?.docs.length ?? 0;
+                                      if (pendingAppeals > 0) {
+                                        return Padding(
+                                          padding: const EdgeInsets.only(bottom: 16),
+                                          child: _AttentionBanner(
+                                            message: 'You have $pendingAppeals pending account appeals',
+                                            actionLabel: 'Review now →',
+                                            onTap: () => context.push(RouteNames.adminAppeals),
+                                          ),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    },
+                                  ),
                                   DashboardSummaryStatCard(
                                     icon: Icons.insights_rounded,
                                     value: 'Active',
@@ -307,9 +324,10 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
                                     onTap: () => widget.onAction(1),
                                   ),
                                   DashboardQuickActionTile(
-                                    label: 'Finance',
-                                    icon: Icons.account_balance_outlined,
-                                    onTap: () => widget.onAction(2),
+                                    label: 'Account Appeals',
+                                    icon: Icons.history_edu_rounded,
+                                    onTap: () =>
+                                        context.push(RouteNames.adminAppeals),
                                   ),
                                   DashboardQuickActionTile(
                                     label: 'Dispute Center',
@@ -318,9 +336,9 @@ class _AdminHomeOverviewState extends State<_AdminHomeOverview> {
                                         context.push(RouteNames.adminDisputes),
                                   ),
                                   DashboardQuickActionTile(
-                                    label: 'Admin Profile',
-                                    icon: Icons.badge_outlined,
-                                    onTap: () => widget.onAction(4),
+                                    label: 'Finance Center',
+                                    icon: Icons.account_balance_outlined,
+                                    onTap: () => widget.onAction(2),
                                   ),
                                   DashboardQuickActionTile(
                                     label: 'Manage Taxonomy',

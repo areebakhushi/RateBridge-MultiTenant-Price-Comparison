@@ -325,6 +325,7 @@ class FieldAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
   final PreferredSizeWidget? bottom;
   final bool automaticallyImplyLeading;
+  final Widget? leading;
 
   const FieldAppBar({
     super.key,
@@ -333,6 +334,7 @@ class FieldAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.bottom,
     this.automaticallyImplyLeading = true,
+    this.leading,
   }) : assert(title != null || titleWidget != null);
 
   @override
@@ -345,9 +347,10 @@ class FieldAppBar extends StatelessWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       leadingWidth: 52,
       titleSpacing: 4,
-      leading: automaticallyImplyLeading
-          ? AppNavigation.leading(context)
-          : null,
+      leading: leading ??
+          (automaticallyImplyLeading
+              ? AppNavigation.leading(context)
+              : null),
       title: titleWidget ?? Text(title!),
       actions: actions,
       bottom: bottom,

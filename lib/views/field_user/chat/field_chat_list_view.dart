@@ -21,6 +21,9 @@ class FieldChatListView extends StatefulWidget {
 }
 
 class _FieldChatListViewState extends State<FieldChatListView> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedChatIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +39,10 @@ class _FieldChatListViewState extends State<FieldChatListView> {
   }
 
   void _openThread(ChatThreadModel thread) {
+    if (_isSelectionMode) {
+      _toggleSelection(thread.chatId);
+      return;
+    }
     context.push(
       RouteNames.fieldChatThread.replaceFirst(':orderId', thread.supplierId),
       extra: FieldChatThreadArgs(
@@ -43,6 +50,69 @@ class _FieldChatListViewState extends State<FieldChatListView> {
         supplierName: thread.supplierName,
       ),
     );
+  }
+
+  void _toggleSelection(String chatId) {
+    setState(() {
+      if (_selectedChatIds.contains(chatId)) {
+        _selectedChatIds.remove(chatId);
+        if (_selectedChatIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedChatIds.add(chatId);
+      }
+    });
+  }
+
+  void _enterSelectionMode(String chatId) {
+    setState(() {
+      _isSelectionMode = true;
+      _selectedChatIds.add(chatId);
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected() async {
+    if (_selectedChatIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete ${_selectedChatIds.length} conversations?'),
+        content: const Text('This will remove these conversations from your list. They will still be visible to the suppliers.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final session = context.read<FieldSessionViewModel>();
+      final uid = session.user?.uid;
+      if (uid == null) return;
+
+      try {
+        final vm = context.read<FieldChatViewModel>();
+        for (final chatId in _selectedChatIds) {
+          await vm.hideConversation(chatId, uid);
+        }
+        setState(() {
+          _selectedChatIds.clear();
+          _isSelectionMode = false;
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete conversations: $e')),
+          );
+        }
+      }
+    }
   }
 
   String _relativeTime(DateTime date) {
@@ -65,9 +135,27 @@ class _FieldChatListViewState extends State<FieldChatListView> {
         backgroundColor: FieldColors.screenBackground,
         appBar: AppBar(
           automaticallyImplyLeading: false,
-          leading: AppNavigation.leading(context),
+          leading: _isSelectionMode
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => setState(() {
+                    _isSelectionMode = false;
+                    _selectedChatIds.clear();
+                  }),
+                )
+              : AppNavigation.leading(context),
           titleSpacing: AppNavigation.canPop(context) ? 4 : 20,
-          title: const Text('Messages'),
+          title: _isSelectionMode
+              ? Text('${_selectedChatIds.length} selected')
+              : const Text('Messages'),
+          actions: _isSelectionMode
+              ? [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: _confirmAndDeleteSelected,
+                  ),
+                ]
+              : null,
         ),
         body: vm.errorMessage != null && vm.threads.isEmpty
             ? FieldErrorState(
@@ -91,10 +179,14 @@ class _FieldChatListViewState extends State<FieldChatListView> {
                             const SizedBox(height: FieldSpacing.sm),
                         itemBuilder: (context, index) {
                           final thread = vm.threads[index];
+                          final isSelected = _selectedChatIds.contains(thread.chatId);
                           return _ChatListTile(
                             thread: thread,
+                            isSelected: isSelected,
+                            isSelectionMode: _isSelectionMode,
                             relativeTime: _relativeTime(thread.lastMessageAt),
                             onTap: () => _openThread(thread),
+                            onLongPress: () => _enterSelectionMode(thread.chatId),
                           );
                         },
                       ),
@@ -105,13 +197,19 @@ class _FieldChatListViewState extends State<FieldChatListView> {
 
 class _ChatListTile extends StatelessWidget {
   final ChatThreadModel thread;
+  final bool isSelected;
+  final bool isSelectionMode;
   final String relativeTime;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _ChatListTile({
     required this.thread,
+    this.isSelected = false,
+    this.isSelectionMode = false,
     required this.relativeTime,
     required this.onTap,
+    required this.onLongPress,
   });
 
   @override
@@ -120,12 +218,24 @@ class _ChatListTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(FieldRadius.card),
         child: Ink(
-          decoration: FieldTheme.cardDecoration(),
+          decoration: FieldTheme.cardDecoration().copyWith(
+            color: isSelected ? FieldColors.accentAmber.withValues(alpha: 0.1) : Colors.white,
+            border: isSelected ? Border.all(color: FieldColors.accentAmber, width: 1.5) : null,
+          ),
           padding: const EdgeInsets.all(FieldSpacing.md),
           child: Row(
             children: [
+              if (isSelectionMode) ...[
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => onTap(),
+                  activeColor: FieldColors.accentAmber,
+                ),
+                const SizedBox(width: 8),
+              ],
               CircleAvatar(
                 radius: 22,
                 backgroundColor: FieldColors.primaryNavy.withValues(alpha: 0.08),
@@ -169,7 +279,7 @@ class _ChatListTile extends StatelessWidget {
                     relativeTime,
                     style: FieldTypography.labelSmall.copyWith(fontSize: 10),
                   ),
-                  if (thread.unreadFieldUser > 0) ...[
+                  if (thread.unreadFieldUser > 0 && !isSelectionMode) ...[
                     const SizedBox(height: FieldSpacing.sm),
                     Container(
                       constraints: const BoxConstraints(minWidth: 20, minHeight: 20),

@@ -242,4 +242,38 @@ class TransactionRepository {
     final y = int.parse(parts[0]); final m = int.parse(parts[1]);
     return DateTime(m == 12 ? y + 1 : y, m == 12 ? 1 : m + 1, 1);
   }
+
+  /// Soft-delete: Hide transaction for current user
+  Future<void> hideTransactionForUser(String txId, String userId) async {
+    await _db.collection(FirestorePaths.transactionsCol).doc(txId).update({
+      'hiddenBy': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  /// Bulk soft-delete transactions
+  Future<void> hideTransactionsForUser(List<String> txIds, String userId) async {
+    final batch = _db.batch();
+    for (final id in txIds) {
+      batch.update(_db.collection(FirestorePaths.transactionsCol).doc(id), {
+        'hiddenBy': FieldValue.arrayUnion([userId]),
+      });
+    }
+    await batch.commit();
+  }
+
+  /// Clear entire payment history for supplier
+  Future<void> hideAllPaymentProofsForUser(String supplierUid) async {
+    final snap = await _db
+        .collection('payment_proofs')
+        .where('payerId', isEqualTo: supplierUid)
+        .get();
+
+    final batch = _db.batch();
+    for (final doc in snap.docs) {
+      batch.update(doc.reference, {
+        'hiddenBy': FieldValue.arrayUnion([supplierUid]),
+      });
+    }
+    await batch.commit();
+  }
 }

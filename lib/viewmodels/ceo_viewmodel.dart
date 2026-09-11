@@ -1,5 +1,6 @@
 // MVVM: ViewModel — business logic only
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
@@ -15,6 +16,7 @@ import '../repositories/company_repository.dart';
 import '../repositories/invitation_repository.dart';
 import '../services/cloud_function_service.dart';
 import '../services/notification_service.dart';
+import '../services/storage_service.dart';
 import '../constants/app_constants.dart';
 import '../constants/firestore_paths.dart';
 import '../utils/app_exception.dart';
@@ -31,6 +33,7 @@ class CeoViewModel extends ChangeNotifier {
   final InvitationRepository _invitationRepo;
   final OrderRepository _orderRepo;
   final NotificationService _notificationService;
+  final StorageService _storageService = StorageService();
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -50,6 +53,9 @@ class CeoViewModel extends ChangeNotifier {
   List<PartnershipRequestModel> _receivedPartnershipRequests = [];
   List<PartnershipRequestModel> _sentPartnershipRequests = [];
   bool _partnershipRequestsReady = false;
+
+  bool _appealSubmitted = false;
+  bool get appealSubmitted => _appealSubmitted;
 
   CeoViewModel(
       this._uid,
@@ -89,6 +95,54 @@ class CeoViewModel extends ChangeNotifier {
       _sentPartnershipRequests
           .where((r) => r.status == 'pending')
           .toList(growable: false);
+
+  void clearAppealState() {
+    _appealSubmitted = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<void> submitAppeal(String message, File? file, String? phone) async {
+    _errorMessage = null;
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final existing = await _db.collection('appeals')
+          .where('uid', isEqualTo: _uid)
+          .where('status', isEqualTo: 'pending')
+          .get();
+      if (existing.docs.isNotEmpty) {
+        _errorMessage = 'Your appeal is already under review.';
+        return;
+      }
+
+      String? imageUrl;
+      if (file != null) {
+        imageUrl = await _storageService.uploadFile(file: file, path: 'appeals/$_uid');
+      }
+
+      final userDoc = _uid != null ? await _userRepo.getUserDoc(_uid!) : null;
+
+      await _db.collection('appeals').add({
+        'uid': _uid,
+        'role': 'CEO',
+        'name': userDoc?.name ?? 'CEO',
+        'companyId': _company?.id ?? userDoc?.companyId ?? '',
+        'message': message,
+        'phone': phone,
+        'imageUrl': imageUrl,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'pending',
+        'rejectionReason': userDoc?.rejectionReason ?? '',
+      });
+      _appealSubmitted = true;
+    } catch (e) {
+      _errorMessage = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<void> _loadCompanyData() async {
     final uid = _uid;
@@ -379,6 +433,8 @@ class CeoViewModel extends ChangeNotifier {
       return Stream.value(const []);
     }
 
+    final uid = _uid;
+
     Query<Map<String, dynamic>> buildQuery({required bool withOrderBy}) {
       Query<Map<String, dynamic>> query =
           _db.collection('orders').where('companyId', isEqualTo: companyId);
@@ -399,10 +455,13 @@ class CeoViewModel extends ChangeNotifier {
     return buildQuery(withOrderBy: true).snapshots().transform(
       StreamTransformer.fromHandlers(
         handleData: (snap, sink) {
-          final orders = snap.docs
+          var orders = snap.docs
               .map((doc) => OrderModel.fromMap(doc.id, doc.data()))
-              .toList()
-            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              .toList();
+          if (uid != null) {
+            orders = orders.where((o) => !o.hiddenBy.contains(uid)).toList();
+          }
+          orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           sink.add(orders);
         },
         handleError: (error, stackTrace, sink) async {
@@ -410,12 +469,14 @@ class CeoViewModel extends ChangeNotifier {
               error.code == 'failed-precondition') {
             try {
               final snap = await buildQuery(withOrderBy: false).get();
-              sink.add(
-                snap.docs
-                    .map((doc) => OrderModel.fromMap(doc.id, doc.data()))
-                    .toList()
-                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
-              );
+              var orders = snap.docs
+                  .map((doc) => OrderModel.fromMap(doc.id, doc.data()))
+                  .toList();
+              if (uid != null) {
+                orders = orders.where((o) => !o.hiddenBy.contains(uid)).toList();
+              }
+              orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              sink.add(orders);
               return;
             } catch (_) {}
           }
@@ -930,5 +991,33 @@ class CeoViewModel extends ChangeNotifier {
       _errorMessage = 'Failed to cancel order: $e';
     }
     notifyListeners();
+  }
+
+  /// Soft-deletes a single order from history.
+  Future<void> hideOrder(String orderId) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _orderRepo.hideOrderForUser(orderId, uid);
+      _successMessage = 'Order removed from history.';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  /// Bulk soft-deletes orders.
+  Future<void> hideOrders(List<String> orderIds) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _orderRepo.hideOrdersForUser(orderIds, uid);
+      _successMessage = 'Orders removed from history.';
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
   }
 }

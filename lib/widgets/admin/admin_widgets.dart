@@ -541,12 +541,14 @@ class AdminCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final EdgeInsetsGeometry? margin;
+  final Color? color;
 
   const AdminCard({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(20),
     this.margin,
+    this.color,
   });
 
   @override
@@ -554,7 +556,7 @@ class AdminCard extends StatelessWidget {
     return Container(
       margin: margin,
       padding: padding,
-      decoration: AdminTheme.cardDecoration(),
+      decoration: AdminTheme.cardDecoration().copyWith(color: color),
       child: child,
     );
   }

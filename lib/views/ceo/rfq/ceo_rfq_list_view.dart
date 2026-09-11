@@ -15,7 +15,7 @@ import '../../../viewmodels/rfq_viewmodel.dart';
 import '../../../widgets/ceo_nav_bar.dart';
 import '../../../widgets/ceo/ceo_widgets.dart';
 
-class CeoRfqListView extends StatelessWidget {
+class CeoRfqListView extends StatefulWidget {
   final bool fieldUser;
 
   const CeoRfqListView({
@@ -27,15 +27,95 @@ class CeoRfqListView extends StatelessWidget {
   final FirebaseFirestore? debugFirestore;
 
   @override
+  State<CeoRfqListView> createState() => _CeoRfqListViewState();
+}
+
+class _CeoRfqListViewState extends State<CeoRfqListView> {
+  bool _isSelectionMode = false;
+  final Set<String> _selectedRfqIds = {};
+
+  void _toggleSelection(String rfqId) {
+    setState(() {
+      if (_selectedRfqIds.contains(rfqId)) {
+        _selectedRfqIds.remove(rfqId);
+        if (_selectedRfqIds.isEmpty) _isSelectionMode = false;
+      } else {
+        _selectedRfqIds.add(rfqId);
+      }
+    });
+  }
+
+  Future<void> _confirmAndDeleteSelected(String userId) async {
+    if (_selectedRfqIds.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${_selectedRfqIds.length} RFQs?'),
+        content: const Text('This will remove these quote requests from your view. The records remain for audit purposes.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await context.read<RfqViewModel>().hideRfqs(_selectedRfqIds.toList(), userId);
+        setState(() {
+          _selectedRfqIds.clear();
+          _isSelectionMode = false;
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove RFQs: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final company = context.watch<CeoViewModel>().company;
-    final companyId =
-        company?.id ?? context.watch<AuthViewModel>().user?.companyId ?? '';
+    final auth = context.watch<AuthViewModel>();
+    final companyId = company?.id ?? auth.user?.companyId ?? '';
+    final userId = auth.user?.uid ?? '';
 
     return Scaffold(
       backgroundColor: CeoColors.screenBg,
       appBar: CeoAppBar(
-        title: fieldUser ? 'Bulk Quotes' : 'Request for Quotations',
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () => setState(() {
+                  _isSelectionMode = false;
+                  _selectedRfqIds.clear();
+                }),
+              )
+            : null,
+        titleWidget: _isSelectionMode
+            ? Text('${_selectedRfqIds.length} selected')
+            : null,
+        title: _isSelectionMode
+            ? null
+            : (widget.fieldUser ? 'Bulk Quotes' : 'Request for Quotations'),
+        actions: _isSelectionMode
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  onPressed: () => _confirmAndDeleteSelected(userId),
+                ),
+              ]
+            : null,
       ),
       body:
           companyId.isEmpty
@@ -48,7 +128,12 @@ class CeoRfqListView extends StatelessWidget {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final rfqs = snapshot.data ?? [];
+                  var rfqs = snapshot.data ?? [];
+                  
+                  // Filter hidden RFQs locally if the stream doesn't yet
+                  if (userId.isNotEmpty) {
+                    rfqs = rfqs.where((r) => !r.hiddenBy.contains(userId)).toList();
+                  }
 
                   if (rfqs.isEmpty) {
                     return _buildEmptyState(context);
@@ -58,22 +143,42 @@ class CeoRfqListView extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     itemCount: rfqs.length,
                     itemBuilder:
-                        (context, index) => _RfqTile(
-                          rfq: rfqs[index],
-                          detailRoute:
-                              fieldUser
-                                  ? RouteNames.fieldRfqDetail
-                                  : RouteNames.ceoRfqDetail,
-                        ),
+                        (context, index) {
+                          final rfq = rfqs[index];
+                          final isSelected = _selectedRfqIds.contains(rfq.id);
+                          return _RfqTile(
+                            rfq: rfq,
+                            isSelected: isSelected,
+                            isSelectionMode: _isSelectionMode,
+                            onLongPress: () {
+                              setState(() {
+                                _isSelectionMode = true;
+                                _selectedRfqIds.add(rfq.id);
+                              });
+                            },
+                            onTap: () {
+                              if (_isSelectionMode) {
+                                _toggleSelection(rfq.id);
+                              } else {
+                                context.push(
+                                  (widget.fieldUser
+                                      ? RouteNames.fieldRfqDetail
+                                      : RouteNames.ceoRfqDetail)
+                                      .replaceFirst(':rfqId', rfq.id),
+                                );
+                              }
+                            },
+                          );
+                        },
                   );
                 },
               ),
-      floatingActionButton: Padding(
+      floatingActionButton: _isSelectionMode ? null : Padding(
         padding: const EdgeInsets.only(right: 4, bottom: 4),
         child: FloatingActionButton.extended(
           onPressed: () async {
             final effectivePlan = await PlanLimitService.companyPlan(
-              debugFirestore ?? FirebaseFirestore.instance,
+              widget.debugFirestore ?? FirebaseFirestore.instance,
               companyId,
             );
             if (!context.mounted) return;
@@ -81,7 +186,7 @@ class CeoRfqListView extends StatelessWidget {
               _showPremiumRequiredDialog(context);
             } else {
               context.push(
-                fieldUser ? RouteNames.fieldCreateRfq : RouteNames.ceoCreateRfq,
+                widget.fieldUser ? RouteNames.fieldCreateRfq : RouteNames.ceoCreateRfq,
               );
             }
           },
@@ -103,7 +208,7 @@ class CeoRfqListView extends StatelessWidget {
           ),
         ),
       ),
-      bottomNavigationBar: fieldUser ? null : const CeoNavBar(currentIndex: 2),
+      bottomNavigationBar: widget.fieldUser ? null : const CeoNavBar(currentIndex: 2),
     );
   }
 
@@ -137,16 +242,16 @@ class CeoRfqListView extends StatelessWidget {
               ],
             ),
             content: Text(
-              fieldUser
+              widget.fieldUser
                   ? 'Bulk Quote Requests (RFQ) are only available on the Premium plan. Please ask your CEO to upgrade the company workspace.'
                   : 'Bulk Quote Requests (RFQ) are only available on the Premium plan. Upgrade now to start receiving competitive bids and save on materials.',
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text(fieldUser ? 'CLOSE' : 'MAYBE LATER'),
+                child: Text(widget.fieldUser ? 'CLOSE' : 'MAYBE LATER'),
               ),
-              if (!fieldUser)
+              if (!widget.fieldUser)
                 ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
@@ -283,8 +388,18 @@ class _PremiumFeatureBadge extends StatelessWidget {
 
 class _RfqTile extends StatelessWidget {
   final RfqModel rfq;
-  final String detailRoute;
-  const _RfqTile({required this.rfq, required this.detailRoute});
+  final bool isSelected;
+  final bool isSelectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _RfqTile({
+    required this.rfq,
+    this.isSelected = false,
+    this.isSelectionMode = false,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -294,90 +409,115 @@ class _RfqTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
+        color: isSelected ? CeoColors.amber.withValues(alpha: 0.08) : Colors.white,
         elevation: 1,
         shadowColor: Colors.black.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
-        child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: CeoColors.navy.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(Icons.request_quote_rounded, color: CeoColors.navy, size: 24),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                rfq.category,
-                style: CeoTheme.titleStyle(size: 16),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  Icon(isOpen ? Icons.bolt_rounded : Icons.lock_clock_rounded, size: 10, color: statusColor),
-                  const SizedBox(width: 4),
-                  Text(
-                    rfq.status.toUpperCase(),
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isSelectionMode) ...[
+                  Center(
+                    child: Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => onTap(),
+                      activeColor: CeoColors.amber,
                     ),
                   ),
+                  const SizedBox(width: 8),
                 ],
-              ),
-            ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 10),
-            Text(
-              rfq.materialDescription,
-              style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w500, color: CeoColors.navy),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _iconDetail(Icons.inventory_2_outlined, '${rfq.quantity} ${rfq.unit}'),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: CeoColors.navy.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.request_quote_rounded, color: CeoColors.navy, size: 24),
+                ),
                 const SizedBox(width: 12),
-                _iconDetail(Icons.location_on_outlined, rfq.city),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(Icons.event_note_rounded, size: 12, color: CeoColors.textGrey),
-                const SizedBox(width: 6),
-                Text(
-                  'Deadline: ${DateFormat('MMM dd, yyyy').format(rfq.requiredByDate)}',
-                  style: CeoTheme.mutedStyle(size: 12).copyWith(
-                    color: rfq.requiredByDate.isBefore(DateTime.now()) ? CeoColors.red : null,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              rfq.category,
+                              style: CeoTheme.titleStyle(size: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(isOpen ? Icons.bolt_rounded : Icons.lock_clock_rounded, size: 10, color: statusColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  rfq.status.toUpperCase(),
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        rfq.materialDescription,
+                        style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w500, color: CeoColors.navy),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          _iconDetail(Icons.inventory_2_outlined, '${rfq.quantity} ${rfq.unit}'),
+                          const SizedBox(width: 12),
+                          _iconDetail(Icons.location_on_outlined, rfq.city),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.event_note_rounded, size: 12, color: CeoColors.textGrey),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Deadline: ${DateFormat('MMM dd, yyyy').format(rfq.requiredByDate)}',
+                            style: CeoTheme.mutedStyle(size: 12).copyWith(
+                              color: rfq.requiredByDate.isBefore(DateTime.now()) ? CeoColors.red : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
+                if (!isSelectionMode)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: CeoColors.textGrey),
+                  ),
               ],
             ),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: CeoColors.textGrey),
-        onTap: () => context.push(detailRoute.replaceFirst(':rfqId', rfq.id)),
+          ),
         ),
       ),
     );

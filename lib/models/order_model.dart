@@ -30,6 +30,7 @@ class OrderModel {
   final String? chatMetaId;
   final String? paymentProofUrl;
   final String? paymentStatus;
+  final List<String> deletedBy;
 
   const OrderModel({
     required this.orderId,
@@ -61,9 +62,11 @@ class OrderModel {
     this.chatMetaId,
     this.paymentProofUrl,
     this.paymentStatus,
+    this.deletedBy = const [],
   });
 
   String get id => orderId;
+  List<String> get hiddenBy => deletedBy;
 
   factory OrderModel.fromMap(String id, Map<String, dynamic> map) => OrderModel(
     orderId: id,
@@ -99,6 +102,7 @@ class OrderModel {
     chatMetaId: map['chatMetaId'],
     paymentProofUrl: map['paymentProofUrl'],
     paymentStatus: map['paymentStatus'],
+    deletedBy: List<String>.from(map['deletedBy'] ?? map['hiddenBy'] ?? []),
   );
 
   Map<String, dynamic> toMap() => {
@@ -130,6 +134,7 @@ class OrderModel {
     'chatMetaId': chatMetaId,
     if (paymentProofUrl != null) 'paymentProofUrl': paymentProofUrl,
     if (paymentStatus != null) 'paymentStatus': paymentStatus,
+    'deletedBy': deletedBy,
   };
 
   OrderModel copyWith({
@@ -162,6 +167,7 @@ class OrderModel {
     String? chatMetaId,
     String? paymentProofUrl,
     String? paymentStatus,
+    List<String>? deletedBy,
   }) {
     return OrderModel(
       orderId: orderId ?? this.orderId,
@@ -193,6 +199,7 @@ class OrderModel {
       chatMetaId: chatMetaId ?? this.chatMetaId,
       paymentProofUrl: paymentProofUrl ?? this.paymentProofUrl,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      deletedBy: deletedBy ?? this.deletedBy,
     );
   }
 }

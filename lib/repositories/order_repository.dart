@@ -70,6 +70,7 @@ class OrderRepository {
     String companyId,
     String? statusFilter, {
     DocumentSnapshot? startAfter,
+    String? userId,
   }) {
     Query query = _db
         .collection('orders')
@@ -83,21 +84,30 @@ class OrderRepository {
       query = query.startAfterDocument(startAfter);
     }
 
-    return query.snapshots().map((snapshot) => snapshot.docs
-        .map((doc) => OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-        .toList());
+    return query.snapshots().map((snapshot) {
+      var orders = snapshot.docs
+          .map((doc) => OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+          .toList();
+      if (userId != null) {
+        orders = orders.where((o) => !o.hiddenBy.contains(userId)).toList();
+      }
+      return orders;
+    });
   }
 
   /// Fetches all orders for a supplier using efficient Firestore indexing.
-  Stream<List<OrderModel>> getOrdersForSupplier(String supplierUid) {
+  Stream<List<OrderModel>> getOrdersForSupplier(String supplierUid, {String? userId}) {
     return _db
         .collection('orders')
         .where('supplierId', isEqualTo: supplierUid)
         .snapshots()
         .map((snapshot) {
-      final orders = snapshot.docs
+      var orders = snapshot.docs
           .map((doc) => OrderModel.fromMap(doc.id, doc.data()))
           .toList();
+      if (userId != null) {
+        orders = orders.where((o) => !o.hiddenBy.contains(userId)).toList();
+      }
       orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return orders;
     });
@@ -107,8 +117,9 @@ class OrderRepository {
   Stream<List<OrderModel>> watchSupplierOrders(
     String supplierUid,
     String companyId,
-    String? statusFilter,
-  ) {
+    String? statusFilter, {
+    String? userId,
+  }) {
     Query query = _db
         .collection('orders')
         .where('supplierId', isEqualTo: supplierUid)
@@ -119,16 +130,23 @@ class OrderRepository {
       query = query.where('status', isEqualTo: statusFilter.toLowerCase());
     }
 
-    return query.snapshots().map((snapshot) => snapshot.docs
-        .map((doc) => OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-        .toList());
+    return query.snapshots().map((snapshot) {
+      var orders = snapshot.docs
+          .map((doc) => OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+          .toList();
+      if (userId != null) {
+        orders = orders.where((o) => !o.hiddenBy.contains(userId)).toList();
+      }
+      return orders;
+    });
   }
 
   Stream<List<OrderModel>> watchFieldUserOrders(
     String fieldUserUid,
     String companyId,
-    String? statusFilter,
-  ) {
+    String? statusFilter, {
+    String? userId,
+  }) {
     try {
       Query query = _db
           .collection('orders')
@@ -142,10 +160,13 @@ class OrderRepository {
       }
 
       return query.snapshots().map((snapshot) {
-        final orders = snapshot.docs
+        var orders = snapshot.docs
             .map((doc) =>
                 OrderModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
             .toList();
+        if (userId != null) {
+          orders = orders.where((o) => !o.hiddenBy.contains(userId)).toList();
+        }
         orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return orders;
       });
@@ -304,5 +325,31 @@ class OrderRepository {
         .map((snapshot) => snapshot.docs
             .map((doc) => RatingModel.fromMap(doc.id, doc.data()))
             .toList());
+  }
+
+  /// Soft-delete: Hide order for a specific user.
+  Future<void> hideOrderForUser(String orderId, String userId) async {
+    try {
+      await _db.collection('orders').doc(orderId).update({
+        'hiddenBy': FieldValue.arrayUnion([userId]),
+      });
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to hide order: ${e.message}');
+    }
+  }
+
+  /// Bulk soft-delete orders.
+  Future<void> hideOrdersForUser(List<String> orderIds, String userId) async {
+    try {
+      final batch = _db.batch();
+      for (final id in orderIds) {
+        batch.update(_db.collection('orders').doc(id), {
+          'hiddenBy': FieldValue.arrayUnion([userId]),
+        });
+      }
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      throw AppException('Failed to hide orders: ${e.message}');
+    }
   }
 }

@@ -118,6 +118,30 @@ class RfqViewModel extends ChangeNotifier {
     }
   }
 
+  /// Hides an RFQ from the user's history (soft-delete).
+  Future<void> hideRfq(String rfqId, String userId) async {
+    try {
+      await _firestoreService.hideRfqForUser(rfqId, userId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// Bulk hides RFQs from history.
+  Future<void> hideRfqs(List<String> rfqIds, String userId) async {
+    try {
+      await _firestoreService.hideRfqsForUser(rfqIds, userId);
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

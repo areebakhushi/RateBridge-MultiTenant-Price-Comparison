@@ -4,11 +4,13 @@ import '../services/cloud_function_service.dart';
 import '../services/firestore_service.dart';
 import '../services/notification_service.dart';
 import '../utils/app_exception.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class DisputeViewModel extends ChangeNotifier {
   final FirestoreService _firestoreService;
   final CloudFunctionService _cloudFunctions;
   final NotificationService? _notificationService;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   DisputeViewModel(
     this._firestoreService,
@@ -82,8 +84,11 @@ class DisputeViewModel extends ChangeNotifier {
     }
   }
 
-  Stream<List<DisputeModel>> watchCompanyDisputes(String companyId) {
-    return _firestoreService.streamCompanyDisputes(companyId);
+  Stream<List<DisputeModel>> watchCompanyDisputes(String companyId, {String? userId}) {
+    return _firestoreService.streamCompanyDisputes(companyId).map((list) {
+      if (userId == null) return list;
+      return list.where((d) => !d.hiddenBy.contains(userId)).toList();
+    });
   }
 
   Stream<List<DisputeModel>> watchAllDisputes({String? status}) {
@@ -91,7 +96,9 @@ class DisputeViewModel extends ChangeNotifier {
   }
 
   Stream<List<DisputeModel>> watchMyDisputes(String uid) {
-    return _firestoreService.streamRaisedByDisputes(uid);
+    return _firestoreService.streamRaisedByDisputes(uid).map((list) {
+      return list.where((d) => !d.hiddenBy.contains(uid)).toList();
+    });
   }
 
   Stream<DisputeModel?> watchDispute(String disputeId) {
@@ -194,6 +201,38 @@ class DisputeViewModel extends ChangeNotifier {
       );
     } catch (_) {
       // Dispute already updated; in-app alert is best-effort.
+    }
+  }
+
+  /// "Delete for Me" - hides a dispute from the user's view.
+  Future<void> deleteDisputeForMe(String disputeId, String userId) async {
+    try {
+      await _db.collection('disputes').doc(disputeId).update({
+        'hiddenBy': FieldValue.arrayUnion([userId]),
+      });
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  /// "Delete for Me" - hides multiple disputes.
+  Future<void> deleteDisputesForMe(List<String> disputeIds, String userId) async {
+    try {
+      final batch = _db.batch();
+      for (final id in disputeIds) {
+        batch.update(_db.collection('disputes').doc(id), {
+          'hiddenBy': FieldValue.arrayUnion([userId]),
+        });
+      }
+      await batch.commit();
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
     }
   }
 }

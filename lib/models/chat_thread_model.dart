@@ -13,6 +13,7 @@ class ChatThreadModel {
   final String? lastSenderId;
   final int unreadFieldUser;
   final int unreadSupplier;
+  final List<String> hiddenBy;
 
   ChatThreadModel({
     required this.chatId,
@@ -26,6 +27,7 @@ class ChatThreadModel {
     this.lastSenderId,
     this.unreadFieldUser = 0,
     this.unreadSupplier = 0,
+    this.hiddenBy = const [],
   });
 
   bool get hasUnreadForFieldUser => unreadFieldUser > 0;
@@ -43,6 +45,7 @@ class ChatThreadModel {
       lastSenderId: map['lastSenderId'] as String?,
       unreadFieldUser: (map['unreadFieldUser'] as num?)?.toInt() ?? 0,
       unreadSupplier: (map['unreadSupplier'] as num?)?.toInt() ?? 0,
+      hiddenBy: List<String>.from(map['hiddenBy'] ?? []),
     );
   }
 
@@ -55,10 +58,11 @@ class ChatThreadModel {
         'supplierName': supplierName,
         if (fieldUserName.isNotEmpty) 'fieldUserName': fieldUserName,
         'lastMessage': lastMessage,
-        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastMessageAt': lastMessageAt, // Using DateTime directly or FieldValue.serverTimestamp() in updates
         'lastSenderId': lastSenderId,
         'unreadFieldUser': unreadFieldUser,
         'unreadSupplier': unreadSupplier,
+        'hiddenBy': hiddenBy,
       };
 
   static DateTime _parseDate(dynamic value) {

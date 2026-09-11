@@ -4,8 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../constants/route_names.dart';
 import '../../theme/ceo_theme.dart';
 import '../../theme/field_theme.dart';
+import '../../utils/app_navigation.dart';
 import '../../viewmodels/ceo_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../models/user_model.dart';
@@ -100,7 +102,10 @@ class _CeoFieldUsersViewState extends State<CeoFieldUsersView>
   Widget build(BuildContext context) {
     final companyId = context.read<AuthViewModel>().user?.companyId ?? '';
 
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.ceoDashboard,
+      child: Scaffold(
       backgroundColor: CeoColors.screenBg,
       appBar: CeoAppBar(
         title: 'User Management',
@@ -176,6 +181,7 @@ class _CeoFieldUsersViewState extends State<CeoFieldUsersView>
             )
           : null,
       bottomNavigationBar: const CeoNavBar(currentIndex: 3),
+    ),
     );
   }
 

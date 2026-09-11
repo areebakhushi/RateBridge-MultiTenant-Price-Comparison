@@ -8,6 +8,7 @@ import '../../viewmodels/supplier_viewmodel.dart';
 import '../../models/material_model.dart';
 import '../../theme/supplier_theme.dart';
 import '../../constants/route_names.dart';
+import '../../utils/app_navigation.dart';
 import '../../utils/currency_formatter.dart';
 import '../../utils/app_theme.dart';
 import '../../widgets/app_network_image.dart';
@@ -107,7 +108,10 @@ class _SupplierMaterialsViewState extends State<SupplierMaterialsView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return RootTabPopScope(
+      isHome: false,
+      homeRoute: RouteNames.supplierDashboard,
+      child: Scaffold(
       backgroundColor: FieldColors.screenBackground,
       appBar: const SupplierAppBar(title: 'My Materials'),
       floatingActionButton: FloatingActionButton(
@@ -144,6 +148,7 @@ class _SupplierMaterialsViewState extends State<SupplierMaterialsView> {
           );
         },
       ),
+    ),
     );
   }
 

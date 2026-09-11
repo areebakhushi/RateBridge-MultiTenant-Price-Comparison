@@ -208,6 +208,7 @@ class SupplierAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
   final PreferredSizeWidget? bottom;
   final bool automaticallyImplyLeading;
+  final Widget? leading;
 
   const SupplierAppBar({
     super.key,
@@ -216,6 +217,7 @@ class SupplierAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.bottom,
     this.automaticallyImplyLeading = true,
+    this.leading,
   }) : assert(title != null || titleWidget != null);
 
   @override
@@ -226,9 +228,10 @@ class SupplierAppBar extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return AppBar(
       automaticallyImplyLeading: false,
-      leading: automaticallyImplyLeading
-          ? AppNavigation.leading(context)
-          : null,
+      leading: leading ??
+          (automaticallyImplyLeading
+              ? AppNavigation.leading(context)
+              : null),
       title: titleWidget ?? Text(title!),
       actions: actions,
       bottom: bottom,
